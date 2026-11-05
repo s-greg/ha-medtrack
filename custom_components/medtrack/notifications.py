@@ -56,10 +56,37 @@ def format_amount(amount: float) -> str:
     return f"{amount:g}"
 
 
+def plural_unit(unit: str, amount: float) -> str:
+    """English plural of a unit word for amounts above 1: tablet -> tablets.
+
+    Deliberately conservative: abbreviations and symbols (ml, mg, IU, µg) and
+    anything with capitals, digits or under 4 letters are left as typed, as
+    are words already ending in "s". Only the last word changes ("eye drop").
+    """
+    if amount <= 1:
+        return unit
+    head, _, word = unit.rpartition(" ")
+    if len(word) < 4 or not word.isalpha() or not word.islower() or word[-1] == "s":
+        return unit
+    if word.endswith(("x", "z", "ch", "sh")):
+        word += "es"
+    elif word[-1] == "y" and word[-2] not in "aeiou":
+        word = word[:-1] + "ies"
+    else:
+        word += "s"
+    return f"{head} {word}" if head else word
+
+
+def format_quantity(amount: float, unit: str) -> str:
+    """'2 tablets', '1 tablet', '0.5 tablet', '5 ml'."""
+    return f"{format_amount(amount)} {plural_unit(unit, amount)}"
+
+
 def _body(medication: Medication, dose: Dose) -> str:
     """'<dose amount> <unit> · <HH:MM>< · instructions>'."""
     body = (
-        f"{format_amount(medication.dose_amount)} {medication.unit} · {dose.local_time}"
+        f"{format_quantity(medication.dose_amount, medication.unit)}"
+        f" · {dose.local_time}"
     )
     if medication.instructions:
         body += f" · {medication.instructions}"
@@ -93,8 +120,13 @@ def reminder_payload(
     *,
     number: int,
     max_reminders: int,
+    url: str | None = None,
 ) -> dict[str, Any]:
-    """Service data for reminder `number` of `max_reminders`."""
+    """Service data for reminder `number` of `max_reminders`.
+
+    `url` is the page the Companion App opens when the notification itself
+    (not a button) is tapped.
+    """
     critical = medication.critical_mode == CriticalMode.ALL_REMINDERS or (
         medication.critical_mode == CriticalMode.FINAL_REMINDER
         and number >= max_reminders
@@ -114,33 +146,42 @@ def reminder_payload(
             "destructive": True,
         }
     )
+    data: dict[str, Any] = {
+        "tag": dose_tag(dose.dose_id),
+        "group": NOTIFY_GROUP,
+        "push": _push(settings.interruption_level, settings, critical),
+        "action_data": {"dose_id": dose.dose_id},
+        "actions": actions,
+    }
+    if url:
+        data["url"] = url
     return {
         "title": f"Medication: {medication.name}",
         "message": f"{_body(medication, dose)} (reminder {number} of {max_reminders})",
-        "data": {
-            "tag": dose_tag(dose.dose_id),
-            "group": NOTIFY_GROUP,
-            "push": _push(settings.interruption_level, settings, critical),
-            "action_data": {"dose_id": dose.dose_id},
-            "actions": actions,
-        },
+        "data": data,
     }
 
 
 def missed_payload(
-    medication: Medication, dose: Dose, settings: HubSettings
+    medication: Medication,
+    dose: Dose,
+    settings: HubSettings,
+    url: str | None = None,
 ) -> dict[str, Any]:
     """Service data for the final 'Missed' notification (only 'Taken late')."""
+    data: dict[str, Any] = {
+        "tag": dose_tag(dose.dose_id),
+        "group": NOTIFY_GROUP,
+        "push": _push(settings.interruption_level, settings, critical=False),
+        "action_data": {"dose_id": dose.dose_id},
+        "actions": [_taken_action(dose.dose_id, "Taken late", settings)],
+    }
+    if url:
+        data["url"] = url
     return {
         "title": f"Missed: {medication.name}",
         "message": _body(medication, dose),
-        "data": {
-            "tag": dose_tag(dose.dose_id),
-            "group": NOTIFY_GROUP,
-            "push": _push(settings.interruption_level, settings, critical=False),
-            "action_data": {"dose_id": dose.dose_id},
-            "actions": [_taken_action(dose.dose_id, "Taken late", settings)],
-        },
+        "data": data,
     }
 
 
@@ -152,7 +193,7 @@ def clear_payload(tag: str) -> dict[str, Any]:
 # --- Sending ----------------------------------------------------------------------
 
 
-def _issue_id(entry_id: str, target: str) -> str:
+def missing_target_issue_id(entry_id: str, target: str) -> str:
     return f"missing_target_{entry_id}_{target}"
 
 
@@ -198,7 +239,7 @@ class Notifier:
             ir.async_create_issue(
                 self._hass,
                 DOMAIN,
-                _issue_id(self._entry_id, target),
+                missing_target_issue_id(self._entry_id, target),
                 is_fixable=False,
                 severity=ir.IssueSeverity.WARNING,
                 translation_key="missing_target",
@@ -218,4 +259,6 @@ class Notifier:
                 type(err).__name__,
             )
             return
-        ir.async_delete_issue(self._hass, DOMAIN, _issue_id(self._entry_id, target))
+        ir.async_delete_issue(
+            self._hass, DOMAIN, missing_target_issue_id(self._entry_id, target)
+        )

@@ -6,7 +6,7 @@ from typing import Any
 
 from freezegun.api import FrozenDateTimeFactory
 from homeassistant.core import HomeAssistant, ServiceCall
-from homeassistant.exceptions import HomeAssistantError
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers import issue_registry as ir
 import pytest
 from pytest_homeassistant_custom_component.common import (
@@ -26,6 +26,7 @@ from custom_components.medtrack.const import (
 from .conftest import (
     TARGETS,
     clears,
+    device_page,
     local,
     make_hub_entry,
     move_to,
@@ -56,7 +57,12 @@ async def _setup(
 
 
 def expected_reminder(
-    dose_id: str, number: int, *, snooze: bool = True, push: dict | None = None
+    hass: HomeAssistant,
+    dose_id: str,
+    number: int,
+    *,
+    snooze: bool = True,
+    push: dict | None = None,
 ) -> dict[str, Any]:
     """The exact reminder payload from spec §6 for the test medication."""
     actions: list[dict[str, Any]] = [
@@ -71,13 +77,14 @@ def expected_reminder(
     )
     return {
         "title": "Medication: Metformin",
-        "message": f"2 tablet · 08:00 · with food (reminder {number} of 4)",
+        "message": f"2 tablets · 08:00 · with food (reminder {number} of 4)",
         "data": {
             "tag": f"medtrack_{dose_id}",
             "group": "medtrack",
             "push": push or {"interruption-level": "time-sensitive"},
             "action_data": {"dose_id": dose_id},
             "actions": actions,
+            "url": device_page(hass, dose_id.split("_")[0]),
         },
     }
 
@@ -101,7 +108,7 @@ async def test_reminder_fires_at_local_time(
 
     await move_to(hass, freezer, local(2026, 11, 5, 8, 0))
     for target in TARGETS:
-        assert reminders(notify_calls, target) == [expected_reminder(dose_id, 1)]
+        assert reminders(notify_calls, target) == [expected_reminder(hass, dose_id, 1)]
     status = hass.states.get("sensor.metformin_status")
     assert status.state == "pending"
     assert status.attributes["dose_id"] == dose_id
@@ -162,20 +169,21 @@ async def test_rereminders_then_missed_then_taken_late(
     for minute in (0, 10, 20, 30):
         await move_to(hass, freezer, local(2026, 11, 5, 8, minute))
     assert reminders(notify_calls) == [
-        expected_reminder(dose_id, n) for n in (1, 2, 3, 4)
+        expected_reminder(hass, dose_id, n) for n in (1, 2, 3, 4)
     ]
     reset(notify_calls)
 
     await move_to(hass, freezer, local(2026, 11, 5, 8, 40))
     missed = {
         "title": "Missed: Metformin",
-        "message": "2 tablet · 08:00 · with food",
+        "message": "2 tablets · 08:00 · with food",
         "data": {
             "tag": f"medtrack_{dose_id}",
             "group": "medtrack",
             "push": {"interruption-level": "time-sensitive"},
             "action_data": {"dose_id": dose_id},
             "actions": [{"action": f"MEDTRACK_TAKEN_{dose_id}", "title": "Taken late"}],
+            "url": device_page(hass, sid),
         },
     }
     for target in TARGETS:
@@ -257,10 +265,10 @@ async def test_snooze_shifts_next_reminder(
     await move_to(hass, freezer, local(2026, 11, 5, 8, 10))  # normal interval: nothing
     assert reminders(notify_calls) == []
     await move_to(hass, freezer, local(2026, 11, 5, 8, 17))  # 08:02 + 15 min
-    assert reminders(notify_calls) == [expected_reminder(dose_id, 1)]
+    assert reminders(notify_calls) == [expected_reminder(hass, dose_id, 1)]
     assert hass.states.get("sensor.metformin_status").state == "pending"
     await move_to(hass, freezer, local(2026, 11, 5, 8, 27))
-    assert reminders(notify_calls)[-1] == expected_reminder(dose_id, 2)
+    assert reminders(notify_calls)[-1] == expected_reminder(hass, dose_id, 2)
 
 
 async def test_snooze_limit_hides_snooze_action(
@@ -273,14 +281,18 @@ async def test_snooze_limit_hides_snooze_action(
     await tap(hass, f"MEDTRACK_SNOOZE_{dose_id}", dose_id)
     reset(notify_calls)
     await move_to(hass, freezer, local(2026, 11, 5, 8, 15))
-    assert reminders(notify_calls) == [expected_reminder(dose_id, 1, snooze=False)]
+    assert reminders(notify_calls) == [
+        expected_reminder(hass, dose_id, 1, snooze=False)
+    ]
 
     reset(notify_calls)
     await tap(hass, f"MEDTRACK_SNOOZE_{dose_id}", dose_id)  # no snoozes left
     assert hass.states.get("sensor.metformin_status").state == "pending"
     assert clears(notify_calls) == []  # the reminder stays on the phone
     await move_to(hass, freezer, local(2026, 11, 5, 8, 25))
-    assert reminders(notify_calls) == [expected_reminder(dose_id, 2, snooze=False)]
+    assert reminders(notify_calls) == [
+        expected_reminder(hass, dose_id, 2, snooze=False)
+    ]
 
 
 # --- Test 5: Taken from the notification -------------------------------------------
@@ -366,11 +378,35 @@ async def test_buttons_take_skip_snooze(
         "button", "press", {"entity_id": "button.metformin_skip"}, blocking=True
     )
     assert hass.states.get("sensor.metformin_status").state == "skipped"
-    # Nothing left to act on: pressing again is harmless.
-    await hass.services.async_call(
-        "button", "press", {"entity_id": "button.metformin_take"}, blocking=True
-    )
+    # Nothing left to act on: the press changes nothing and says why.
+    for action, key in (
+        ("take", "nothing_to_take"),
+        ("skip", "nothing_to_skip"),
+        ("snooze", "nothing_to_snooze"),
+    ):
+        with pytest.raises(ServiceValidationError) as err:
+            await hass.services.async_call(
+                "button",
+                "press",
+                {"entity_id": f"button.metformin_{action}"},
+                blocking=True,
+            )
+        assert err.value.translation_key == key
     assert hass.states.get("sensor.metformin_stock").state == "30.0"
+
+
+async def test_snooze_button_without_snoozes_left_raises(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory, notify_calls: Calls
+) -> None:
+    """With no snoozes left the Snooze button shows an error (owner #11)."""
+    await _setup(hass, freezer, options={CONF_MAX_SNOOZES: 0})
+    await move_to(hass, freezer, local(2026, 11, 5, 8, 0))
+    with pytest.raises(ServiceValidationError) as err:
+        await hass.services.async_call(
+            "button", "press", {"entity_id": "button.metformin_snooze"}, blocking=True
+        )
+    assert err.value.translation_key == "no_snoozes_left"
+    assert hass.states.get("sensor.metformin_status").state == "pending"
 
 
 # --- Test 6: early take via the button -------------------------------------------
@@ -404,9 +440,10 @@ async def test_take_outside_early_window_does_nothing(
 ) -> None:
     """Take more than 60 min before the dose does nothing."""
     await _setup(hass, freezer, start=local(2026, 11, 5, 6, 30))
-    await hass.services.async_call(
-        "button", "press", {"entity_id": "button.metformin_take"}, blocking=True
-    )
+    with pytest.raises(ServiceValidationError):
+        await hass.services.async_call(
+            "button", "press", {"entity_id": "button.metformin_take"}, blocking=True
+        )
     assert hass.states.get("sensor.metformin_status").state == "idle"
     assert hass.states.get("sensor.metformin_stock").state == "30.0"
 
@@ -447,8 +484,8 @@ async def test_notify_failure_does_not_stop_other_targets(
     await move_to(hass, freezer, local(2026, 11, 5, 8, 0))
     await move_to(hass, freezer, local(2026, 11, 5, 8, 10))
     assert reminders(notify_calls, TARGETS[1]) == [
-        expected_reminder(dose_id, 1),
-        expected_reminder(dose_id, 2),
+        expected_reminder(hass, dose_id, 1),
+        expected_reminder(hass, dose_id, 2),
     ]
     assert hass.states.get("sensor.metformin_status").attributes["reminders_sent"] == 2
 

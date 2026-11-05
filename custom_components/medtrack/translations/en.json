@@ -15,7 +15,8 @@
           "interruption_level": "Interruption level",
           "require_unlock": "Require unlock for \"Taken\"",
           "critical_volume": "Critical alert volume",
-          "history_retention": "History retention"
+          "history_retention": "History retention",
+          "tap_path": "Page to open when tapping a reminder"
         },
         "data_description": {
           "notify_targets": "Companion App notify services. Every reminder goes to all selected phones.",
@@ -26,12 +27,14 @@
           "interruption_level": "How normal reminders break through Focus modes on iOS.",
           "require_unlock": "The phone must be unlocked before \"Taken\" is accepted.",
           "critical_volume": "Volume (0.1 to 1.0) of critical alerts, which sound even when the phone is muted.",
-          "history_retention": "Days to keep dose history. 0 keeps it forever."
+          "history_retention": "Days to keep dose history. 0 keeps it forever.",
+          "tap_path": "Optional. A Home Assistant path such as /lovelace/medication. Leave empty to open the medication's device page, where its Take, Skip and Snooze buttons are."
         }
       }
     },
     "error": {
-      "no_targets": "Select at least one phone."
+      "no_targets": "Select at least one phone.",
+      "invalid_tap_path": "Enter a path starting with / (for example /lovelace/medication) or a full URL."
     },
     "abort": {
       "no_notify_targets": "No Companion App phones found. Install the Home Assistant app on your iPhone, sign in and allow notifications, then try again."
@@ -51,7 +54,8 @@
           "interruption_level": "Interruption level",
           "require_unlock": "Require unlock for \"Taken\"",
           "critical_volume": "Critical alert volume",
-          "history_retention": "History retention"
+          "history_retention": "History retention",
+          "tap_path": "Page to open when tapping a reminder"
         },
         "data_description": {
           "notify_targets": "Companion App notify services. Every reminder goes to all selected phones.",
@@ -62,12 +66,14 @@
           "interruption_level": "How normal reminders break through Focus modes on iOS.",
           "require_unlock": "The phone must be unlocked before \"Taken\" is accepted.",
           "critical_volume": "Volume (0.1 to 1.0) of critical alerts, which sound even when the phone is muted.",
-          "history_retention": "Days to keep dose history. 0 keeps it forever."
+          "history_retention": "Days to keep dose history. 0 keeps it forever.",
+          "tap_path": "Optional. A Home Assistant path such as /lovelace/medication. Leave empty to open the medication's device page, where its Take, Skip and Snooze buttons are."
         }
       }
     },
     "error": {
-      "no_targets": "Select at least one phone."
+      "no_targets": "Select at least one phone.",
+      "invalid_tap_path": "Enter a path starting with / (for example /lovelace/medication) or a full URL."
     }
   },
   "config_subentries": {
@@ -100,9 +106,9 @@
             "instructions": "Optional, for example \"with food\". Shown in the reminder.",
             "current_stock": "Optional. How much you have now, in the unit above. Leave empty to not track stock for this medication.",
             "low_stock_threshold": "Optional. Alert when stock is at or below this amount. Leave empty for no low-stock alerts.",
-            "refill_amount": "Optional. Used by the \"Refilled\" action.",
+            "refill_amount": "Optional. Leave empty if you do not want a default. Used by the \"Refilled\" action.",
             "critical_mode": "Critical alerts sound even when the phone is muted or in a Focus mode.",
-            "active": "Paused medications send no reminders."
+            "active": "Paused medications send no reminders. Pausing ends a running dose (recorded as skipped)."
           },
           "sections": {
             "overrides": {
@@ -137,9 +143,9 @@
             "instructions": "Optional, for example \"with food\". Shown in the reminder.",
             "current_stock": "Current stock, already reduced by the doses you took. Changing it is logged as a stock correction. Empty turns stock tracking off.",
             "low_stock_threshold": "Optional. Alert when stock is at or below this amount. Leave empty for no low-stock alerts.",
-            "refill_amount": "Optional. Used by the \"Refilled\" action.",
+            "refill_amount": "Optional. Leave empty if you do not want a default. Used by the \"Refilled\" action.",
             "critical_mode": "Critical alerts sound even when the phone is muted or in a Focus mode.",
-            "active": "Paused medications send no reminders."
+            "active": "Paused medications send no reminders. Pausing ends a running dose (recorded as skipped)."
           },
           "sections": {
             "overrides": {
@@ -266,6 +272,20 @@
     "rate_budget": {
       "title": "MedTrack may exceed the iPhone notification limit",
       "description": "In the worst case MedTrack could send {budget} notifications per phone per day. Apple allows 500 per phone per day (critical alerts excluded). Lower the max reminders or max snoozes in the MedTrack settings or per medication."
+    }
+  },
+  "exceptions": {
+    "nothing_to_take": {
+      "message": "{medication}: there is no dose to take right now (nothing running and nothing due within the early-take window)."
+    },
+    "nothing_to_skip": {
+      "message": "{medication}: there is no running dose to skip."
+    },
+    "nothing_to_snooze": {
+      "message": "{medication}: there is no running dose to snooze."
+    },
+    "no_snoozes_left": {
+      "message": "{medication}: no snoozes left for this dose."
     }
   }
 }

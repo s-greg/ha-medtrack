@@ -6,7 +6,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 
 from homeassistant.components.button import ButtonEntity, ButtonEntityDescription
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .coordinator import MedTrackConfigEntry, MedTrackManager
@@ -48,7 +48,9 @@ async def async_setup_entry(
 ) -> None:
     """Create the buttons for every medication."""
     manager = entry.runtime_data
-    for subentry_id in manager.medications:
+
+    @callback
+    def add_medication(subentry_id: str) -> None:
         async_add_entities(
             [
                 MedTrackButton(manager, subentry_id, description)
@@ -56,6 +58,10 @@ async def async_setup_entry(
             ],
             config_subentry_id=subentry_id,
         )
+
+    manager.async_register_entity_adder(add_medication)
+    for subentry_id in manager.medications:
+        add_medication(subentry_id)
 
 
 class MedTrackButton(MedicationEntity, ButtonEntity):

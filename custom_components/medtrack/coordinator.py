@@ -18,8 +18,14 @@ from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import CALLBACK_TYPE, Event, HomeAssistant, callback
-from homeassistant.helpers import issue_registry as ir
+from homeassistant.exceptions import ServiceValidationError
+from homeassistant.helpers import (
+    device_registry as dr,
+    entity_registry as er,
+    issue_registry as ir,
+)
 from homeassistant.helpers.dispatcher import async_dispatcher_send
+from homeassistant.helpers.entity import Entity
 from homeassistant.helpers.event import (
     async_track_point_in_utc_time,
     async_track_time_change,
@@ -27,6 +33,7 @@ from homeassistant.helpers.event import (
 from homeassistant.util import dt as dt_util, ulid as ulid_util
 
 from .const import (
+    DEVICE_PAGE_PATH,
     DOMAIN,
     DOSE_RETENTION,
     EVENT_DOSE_PREFIX,
@@ -36,17 +43,19 @@ from .const import (
     SAVE_DELAY,
     SCHEDULE_HORIZON,
     STATUS_IDLE,
+    STOCK_ENTITY_KEYS,
     SUBENTRY_MEDICATION,
     TAKEN_STATES,
     ActionVerb,
     DoseState,
     Source,
 )
-from .models import Dose, HubSettings, Medication
+from .models import Dose, HubSettings, Medication, display_precision
 from .notifications import (
     Notifier,
     dose_tag,
     missed_payload,
+    missing_target_issue_id,
     parse_action,
     reminder_payload,
 )
@@ -61,6 +70,15 @@ from .store import StoreData, create_store
 _LOGGER = logging.getLogger(__name__)
 
 type MedTrackConfigEntry = ConfigEntry[MedTrackManager]
+
+
+def _medication_config(entry: ConfigEntry) -> dict[str, tuple[str, dict[str, Any]]]:
+    """(title, data) of every medication subentry, to detect changes."""
+    return {
+        sid: (subentry.title, dict(subentry.data))
+        for sid, subentry in entry.subentries.items()
+        if subentry.subentry_type == SUBENTRY_MEDICATION
+    }
 
 
 def signal_update(entry_id: str) -> str:
@@ -102,6 +120,17 @@ class MedTrackManager:
         self._lock = asyncio.Lock()
         self._unsub_timer: CALLBACK_TYPE | None = None
         self._unsubs: list[Callable[[], None]] = []
+        # Set on shutdown: nothing may run, send or save after that (an
+        # unloaded copy must never keep a timer and overwrite newer data).
+        self._stopped = False
+        # Last applied configuration, to see what an update changed.
+        self._title = entry.title
+        self._options = dict(entry.options)
+        self._subentry_config = _medication_config(entry)
+        # Entity platforms register a callback that adds one medication's
+        # entities; live entities register themselves per medication.
+        self._entity_adders: list[Callable[[str], None]] = []
+        self._entities: dict[str, set[Entity]] = {}
 
     @property
     def tz(self) -> tzinfo:
@@ -114,8 +143,9 @@ class MedTrackManager:
         """Load state, recover from downtime, build the schedule, start timers."""
         self._load(await self._store.async_load() or {})
         now = dt_util.utcnow()
-        self._apply_config_stock(now)
-        await self._async_drop_unscheduled_doses()
+        for sid in self.medications:
+            self._apply_config_stock(sid, now)
+        await self._async_drop_unscheduled_doses(now)
         self._recover(now)
         self._extend_horizon(now)
         self._check_rate_budget()
@@ -134,19 +164,164 @@ class MedTrackManager:
         self._schedule_wakeup(now)
 
     async def async_shutdown(self) -> None:
-        """Stop timers and listeners and write the final state."""
+        """Stop timers and listeners and write the final state.
+
+        A run that is still sending notifications finishes first (we wait for
+        the lock); because `_stopped` is set, it cannot set a new timer.
+        """
+        self._stopped = True
         for unsub in self._unsubs:
             unsub()
         self._unsubs.clear()
-        if self._unsub_timer:
-            self._unsub_timer()
-            self._unsub_timer = None
+        self._cancel_timer()
         async with self._lock:
+            self._cancel_timer()
             await self._async_save()
 
-    async def async_remove(self) -> None:
-        """Delete the stored data (the hub was deleted)."""
-        await self._store.async_remove()
+    # --- Configuration changes (no reload) ------------------------------------------
+
+    async def async_config_changed(self) -> None:
+        """Apply changed hub settings or medications in place.
+
+        Called by the entry's update listener instead of reloading, so saving
+        a form does not make every entity unavailable. Only the entities of a
+        medication whose unit, display precision or stock tracking changed are
+        re-created.
+        """
+        entry = self.entry
+        async with self._lock:
+            if self._stopped:
+                return
+            now = dt_util.utcnow()
+            if entry.title != self._title:
+                self._title = entry.title
+                self._rename_device(entry.entry_id, entry.title)
+            if dict(entry.options) != self._options:
+                self._apply_options()
+            current = _medication_config(entry)
+            previous = self._subentry_config
+            removed = [sid for sid in previous if sid not in current]
+            added = [sid for sid in current if sid not in previous]
+            rebuild = [
+                sid
+                for sid in current
+                if sid in previous
+                and current[sid] != previous[sid]
+                and await self._async_update_medication(sid, *current[sid], now)
+            ]
+            for sid in removed:
+                await self._async_remove_medication(sid)
+            for sid in added:
+                self.medications[sid] = Medication.from_subentry(sid, *current[sid])
+                self._apply_config_stock(sid, now)
+            self._subentry_config = current
+            self._extend_horizon(now)
+            self._check_rate_budget()
+            await self._async_save()
+            self._schedule_wakeup(now)
+
+        for sid in (*removed, *rebuild):
+            await self._async_remove_entities(sid)
+        for sid in (*rebuild, *added):
+            self.async_add_medication_entities(sid)
+        self.async_notify_entities()
+
+    def _apply_options(self) -> None:
+        """Use new hub settings from now on (running doses keep their timers)."""
+        old_targets = set(self.settings.notify_targets)
+        self._options = dict(self.entry.options)
+        self.settings = HubSettings.from_options(self.entry.options)
+        self._notifier = Notifier(
+            self.hass, self.entry.entry_id, self.settings.notify_targets
+        )
+        for target in old_targets - set(self.settings.notify_targets):
+            ir.async_delete_issue(
+                self.hass, DOMAIN, missing_target_issue_id(self.entry.entry_id, target)
+            )
+
+    async def _async_update_medication(
+        self, sid: str, title: str, data: dict[str, Any], now: datetime
+    ) -> bool:
+        """Apply an edited medication. Returns True if its entities must be
+        re-created (unit, display precision or stock tracking changed)."""
+        old = self.medications[sid]
+        new = Medication.from_subentry(sid, title, data)
+        self.medications[sid] = new
+        self._apply_config_stock(sid, now)
+        if new.name != old.name:
+            self._rename_device(sid, new.name)
+        if old.active and not new.active:
+            await self._async_end_doses_for_pause(new, now)
+        if (new.times, new.days, new.active) != (old.times, old.days, old.active):
+            # Rebuild the not-yet-started doses; running, taken, skipped and
+            # missed doses stay as they are.
+            for dose in list(self.doses.values()):
+                if dose.subentry_id == sid and dose.state == DoseState.SCHEDULED:
+                    del self.doses[dose.dose_id]
+        return (
+            new.unit != old.unit
+            or new.tracks_stock != old.tracks_stock
+            or display_precision(new.dose_amount) != display_precision(old.dose_amount)
+        )
+
+    async def _async_remove_medication(self, sid: str) -> None:
+        """Forget a deleted medication: its doses, alerts and stock."""
+        for dose in list(self.doses.values()):
+            if dose.subentry_id != sid:
+                continue
+            if dose.is_active or dose.state == DoseState.MISSED:
+                await self._notifier.async_clear(dose_tag(dose.dose_id))
+            del self.doses[dose.dose_id]
+        self.medications.pop(sid, None)
+        self.stock_state.pop(sid, None)
+
+    @callback
+    def _rename_device(self, identifier: str, name: str) -> None:
+        dev_reg = dr.async_get(self.hass)
+        if device := dev_reg.async_get_device_by_identifier(
+            (DOMAIN, identifier), self.entry.entry_id
+        ):
+            dev_reg.async_update_device(device.id, name=name)
+
+    # --- Entity bookkeeping ----------------------------------------------------------
+
+    @callback
+    def async_register_entity_adder(self, add: Callable[[str], None]) -> None:
+        """A platform's callback that adds the entities of one medication."""
+        self._entity_adders.append(add)
+
+    @callback
+    def async_add_medication_entities(self, sid: str) -> None:
+        """Create the entities of one medication on every platform."""
+        if sid not in self.medications:
+            return
+        self.async_remove_stock_entities(sid)
+        for add in self._entity_adders:
+            add(sid)
+
+    @callback
+    def async_register_entity(self, sid: str, entity: Entity) -> CALLBACK_TYPE:
+        """Track a live medication entity; returns the unregister callback."""
+        self._entities.setdefault(sid, set()).add(entity)
+        return lambda: self._entities.get(sid, set()).discard(entity)
+
+    async def _async_remove_entities(self, sid: str) -> None:
+        """Remove the live entity objects of one medication (registry kept)."""
+        for entity in list(self._entities.pop(sid, ())):
+            await entity.async_remove(force_remove=True)
+
+    @callback
+    def async_remove_stock_entities(self, sid: str) -> None:
+        """Delete stock entities from the registry when stock is not tracked."""
+        med = self.medications.get(sid)
+        if med is None or med.tracks_stock:
+            return
+        ent_reg = er.async_get(self.hass)
+        for platform, key in STOCK_ENTITY_KEYS:
+            if entity_id := ent_reg.async_get_entity_id(
+                platform, DOMAIN, f"{sid}_{key}"
+            ):
+                ent_reg.async_remove(entity_id)
 
     # --- Persistence -----------------------------------------------------------------
 
@@ -191,42 +366,61 @@ class MedTrackManager:
 
     # --- Setup helpers -----------------------------------------------------------------
 
-    def _apply_config_stock(self, now: datetime) -> None:
-        """Create stock state, and apply stock edits made in the medication form.
+    def _apply_config_stock(self, sid: str, now: datetime) -> None:
+        """Create stock state, and apply a stock edit made in the medication form.
 
         An edited form value is a logged stock correction (like set_stock), not
         a reset; an empty value turns stock tracking off.
         """
-        for sid, med in self.medications.items():
-            state = self.stock_state.get(sid)
-            if state is None:
-                self.stock_state[sid] = StockState(
-                    stock=med.initial_stock, config_stock=med.initial_stock
-                )
-                continue
-            if med.initial_stock == state.config_stock:
-                continue
-            if med.initial_stock is not None and med.initial_stock != state.stock:
-                self._add_history(
-                    "stock_set",
-                    sid,
-                    now,
-                    source=Source.CONFIG,
-                    amount=med.initial_stock,
-                )
-                _LOGGER.info("Stock of %s corrected to %s", med.name, med.initial_stock)
-            state.stock = med.initial_stock
-            state.config_stock = med.initial_stock
+        med = self.medications[sid]
+        state = self.stock_state.get(sid)
+        if state is None:
+            self.stock_state[sid] = StockState(
+                stock=med.initial_stock, config_stock=med.initial_stock
+            )
+            return
+        if med.initial_stock == state.config_stock:
+            return
+        if med.initial_stock is not None and med.initial_stock != state.stock:
+            self._add_history(
+                "stock_set", sid, now, source=Source.CONFIG, amount=med.initial_stock
+            )
+            _LOGGER.info("Stock of %s corrected to %s", med.name, med.initial_stock)
+        state.stock = med.initial_stock
+        state.config_stock = med.initial_stock
 
-    async def _async_drop_unscheduled_doses(self) -> None:
-        """Forget doses of removed or paused medications (clearing their alerts)."""
+    async def _async_drop_unscheduled_doses(self, now: datetime) -> None:
+        """Forget doses of removed medications; end running doses of paused ones."""
+        for med in self.medications.values():
+            if not med.active:
+                await self._async_end_doses_for_pause(med, now)
         for dose in list(self.doses.values()):
-            med = self.medications.get(dose.subentry_id)
-            if med is not None and med.active:
+            if dose.subentry_id in self.medications:
                 continue
             if dose.is_active or dose.state == DoseState.MISSED:
                 await self._notifier.async_clear(dose_tag(dose.dose_id))
             del self.doses[dose.dose_id]
+
+    async def _async_end_doses_for_pause(self, med: Medication, now: datetime) -> None:
+        """Pausing: a running dose is recorded as skipped (source system), its
+        notification cleared; doses not started yet are dropped. Missed doses
+        keep their "Taken late" option."""
+        for dose in list(self.doses.values()):
+            if dose.subentry_id != med.subentry_id:
+                continue
+            if dose.is_active:
+                self._transition(
+                    med,
+                    dose,
+                    DoseState.SKIPPED,
+                    now,
+                    source=Source.SYSTEM,
+                    reason="paused",
+                )
+                dose.next_action_at = dose.scheduled_at + DOSE_RETENTION
+                await self._notifier.async_clear(dose_tag(dose.dose_id))
+            elif dose.state == DoseState.SCHEDULED:
+                del self.doses[dose.dose_id]
 
     def _recover(self, now: datetime) -> None:
         """Handle doses that came due while HA was not running (spec §10).
@@ -338,9 +532,9 @@ class MedTrackManager:
     @callback
     def _schedule_wakeup(self, now: datetime) -> None:
         """Set the single timer to the earliest pending action."""
-        if self._unsub_timer:
-            self._unsub_timer()
-            self._unsub_timer = None
+        self._cancel_timer()
+        if self._stopped:
+            return
         times = [d.next_action_at for d in self.doses.values() if d.next_action_at]
         if not times:
             return
@@ -354,6 +548,12 @@ class MedTrackManager:
                 self.hass, self._async_on_timer, earliest
             )
 
+    @callback
+    def _cancel_timer(self) -> None:
+        if self._unsub_timer:
+            self._unsub_timer()
+            self._unsub_timer = None
+
     async def _async_on_timer(self, _now: datetime) -> None:
         self._unsub_timer = None
         await self._async_process()
@@ -361,6 +561,8 @@ class MedTrackManager:
     async def _async_process(self) -> None:
         """Advance every dose whose next action is due."""
         async with self._lock:
+            if self._stopped:
+                return
             now = dt_util.utcnow()
             due = sorted(
                 (
@@ -381,6 +583,8 @@ class MedTrackManager:
     async def _async_midnight(self, _now: datetime) -> None:
         """Roll the schedule forward and reset daily counters."""
         async with self._lock:
+            if self._stopped:
+                return
             now = dt_util.utcnow()
             self._extend_horizon(now)
             self._schedule_save()
@@ -437,8 +641,19 @@ class MedTrackManager:
                 self.settings,
                 number=max(dose.reminders_sent, 1),
                 max_reminders=self._max_reminders(med),
+                url=self.tap_url(med.subentry_id),
             )
         )
+
+    def tap_url(self, sid: str) -> str | None:
+        """Page opened by tapping a notification: the hub option, else the
+        medication's device page (where its buttons are)."""
+        if self.settings.tap_path:
+            return self.settings.tap_path
+        device = dr.async_get(self.hass).async_get_device_by_identifier(
+            (DOMAIN, sid), self.entry.entry_id
+        )
+        return None if device is None else DEVICE_PAGE_PATH.format(device_id=device.id)
 
     async def _async_supersede(self, med: Medication, new: Dose, now: datetime) -> None:
         """An older dose still running when the next one starts becomes missed."""
@@ -455,7 +670,9 @@ class MedTrackManager:
     ) -> None:
         """Mark missed and send the 'Missed' notification with 'Taken late'."""
         self._mark_missed_silently(med, dose, now)
-        await self._notifier.async_send(missed_payload(med, dose, self.settings))
+        await self._notifier.async_send(
+            missed_payload(med, dose, self.settings, url=self.tap_url(med.subentry_id))
+        )
 
     def _transition(
         self,
@@ -466,8 +683,10 @@ class MedTrackManager:
         *,
         source: Source,
         user_id: str | None = None,
+        reason: str | None = None,
     ) -> None:
         """Change state, fire medtrack_dose_<state> and append a history record."""
+        extra = {} if reason is None else {"reason": reason}
         dose.state = state
         if state not in (DoseState.PENDING, DoseState.SNOOZED, DoseState.SCHEDULED):
             dose.resolved_at = at
@@ -490,6 +709,7 @@ class MedTrackManager:
             dose_id=dose.dose_id,
             scheduled_at=dose.scheduled_at.isoformat(),
             state=state.value,
+            **extra,
         )
 
     def _add_history(
@@ -520,7 +740,7 @@ class MedTrackManager:
     def _handle_action_event(self, event: Event) -> None:
         """React to a tapped MedTrack notification button."""
         parsed = parse_action(str(event.data.get("action", "")))
-        if parsed is None:
+        if parsed is None or self._stopped:
             return
         verb, ident = parsed
         action_data = event.data.get("action_data")
@@ -553,6 +773,8 @@ class MedTrackManager:
         notification on all phones.
         """
         async with self._lock:
+            if self._stopped:
+                return False
             now = dt_util.utcnow()
             changed = await self._async_apply(
                 verb,
@@ -663,10 +885,7 @@ class MedTrackManager:
         """Take button: the running dose, or an upcoming one in the early window."""
         dose = self.find_dose(subentry_id, early=True)
         if dose is None:
-            _LOGGER.info(
-                "No dose of %s to take right now", self.medications[subentry_id].name
-            )
-            return False
+            raise self._nothing_to_do("nothing_to_take", subentry_id)
         return await self.async_handle_action(
             ActionVerb.TAKEN, dose.dose_id, user_id=user_id, source=source
         )
@@ -677,10 +896,7 @@ class MedTrackManager:
         """Skip button: the running dose."""
         dose = self.find_dose(subentry_id, early=False)
         if dose is None:
-            _LOGGER.info(
-                "No dose of %s to skip right now", self.medications[subentry_id].name
-            )
-            return False
+            raise self._nothing_to_do("nothing_to_skip", subentry_id)
         return await self.async_handle_action(
             ActionVerb.SKIP, dose.dose_id, user_id=user_id, source=source
         )
@@ -691,12 +907,19 @@ class MedTrackManager:
         """Snooze button: the running dose."""
         dose = self.find_dose(subentry_id, early=False)
         if dose is None:
-            _LOGGER.info(
-                "No dose of %s to snooze right now", self.medications[subentry_id].name
-            )
-            return False
+            raise self._nothing_to_do("nothing_to_snooze", subentry_id)
+        if dose.snoozes_used >= self.settings.max_snoozes:
+            raise self._nothing_to_do("no_snoozes_left", subentry_id)
         return await self.async_handle_action(
             ActionVerb.SNOOZE, dose.dose_id, user_id=user_id, source=source
+        )
+
+    def _nothing_to_do(self, key: str, subentry_id: str) -> ServiceValidationError:
+        """User-visible error for a button press that cannot do anything."""
+        return ServiceValidationError(
+            translation_domain=DOMAIN,
+            translation_key=key,
+            translation_placeholders={"medication": self.medications[subentry_id].name},
         )
 
     # --- Stock --------------------------------------------------------------------

@@ -8,6 +8,7 @@ from typing import Any
 from freezegun.api import FrozenDateTimeFactory
 from homeassistant.config_entries import ConfigSubentryData
 from homeassistant.core import Context, HomeAssistant, ServiceCall
+from homeassistant.helpers import device_registry as dr
 from homeassistant.util import dt as dt_util
 import pytest
 from pytest_homeassistant_custom_component.common import (
@@ -181,6 +182,16 @@ def clears(calls: dict[str, list[ServiceCall]], target: str = TARGETS[0]) -> lis
         for p in sent(calls, target)
         if p.get("message") == "clear_notification"
     ]
+
+
+def device_page(hass: HomeAssistant, subentry_id: str) -> str:
+    """Path of a medication's device page (opened by tapping a reminder)."""
+    entry_id = hass.config_entries.async_entries(DOMAIN)[0].entry_id
+    device = dr.async_get(hass).async_get_device_by_identifier(
+        (DOMAIN, subentry_id), entry_id
+    )
+    assert device is not None
+    return f"/config/devices/device/{device.id}"
 
 
 def reset(calls: dict[str, list[ServiceCall]]) -> None:

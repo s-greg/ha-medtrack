@@ -25,6 +25,9 @@ CONF_INTERRUPTION_LEVEL: Final = "interruption_level"
 CONF_REQUIRE_UNLOCK: Final = "require_unlock"
 CONF_CRITICAL_VOLUME: Final = "critical_volume"
 CONF_HISTORY_RETENTION: Final = "history_retention"
+# Page the Companion App opens when a reminder is tapped; empty = the
+# medication's device page.
+CONF_TAP_PATH: Final = "tap_path"
 
 DEFAULT_REREMIND_INTERVAL: Final = 10
 DEFAULT_MAX_REMINDERS: Final = 4
@@ -123,6 +126,9 @@ RATE_BUDGET_WARNING: Final = 400
 NOTIFY_TIMEOUT: Final = 30  # seconds per notify call
 
 # --- Notifications ------------------------------------------------------------
+# Default page opened by tapping a reminder: the medication's device page,
+# where its Take / Skip / Snooze buttons are.
+DEVICE_PAGE_PATH: Final = "/config/devices/device/{device_id}"
 NOTIFY_GROUP: Final = "medtrack"
 TAG_PREFIX: Final = "medtrack_"
 ACTION_PREFIX: Final = "MEDTRACK_"
@@ -144,6 +150,13 @@ EVENT_DOSE_PREFIX: Final = f"{DOMAIN}_dose_"
 STORAGE_VERSION: Final = 1
 STORAGE_MINOR_VERSION: Final = 1
 SAVE_DELAY: Final = 10  # seconds, for routine (non-transition) saves
+
+# Entities that only exist while stock tracking is on: (platform, key).
+STOCK_ENTITY_KEYS: Final = (
+    ("sensor", "stock"),
+    ("sensor", "days_remaining"),
+    ("binary_sensor", "low_stock"),
+)
 
 # Values of the per-medication status sensor (state of the most recent dose).
 STATUS_IDLE: Final = "idle"

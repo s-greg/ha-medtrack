@@ -72,7 +72,7 @@ async def test_short_restart_keeps_the_reminder_timeline(
 
     await move_to(hass, freezer, local(2026, 11, 5, 8, 20))
     msgs = [p["message"] for p in reminders(notify_calls)]
-    assert msgs == ["2 tablet · 08:00 · with food (reminder 3 of 4)"]
+    assert msgs == ["2 tablets · 08:00 · with food (reminder 3 of 4)"]
     assert reminders(notify_calls)[0]["data"]["tag"] == f"medtrack_{dose_id}"
 
 
@@ -89,7 +89,7 @@ async def test_restart_mid_dose_resumes_immediately(
     await _restart_at(hass, freezer, entry, local(2026, 11, 5, 8, 25))
     for target in TARGETS:
         assert [p["message"] for p in reminders(notify_calls, target)] == [
-            "2 tablet · 08:00 · with food (reminder 3 of 4)"
+            "2 tablets · 08:00 · with food (reminder 3 of 4)"
         ]
     await move_to(hass, freezer, local(2026, 11, 5, 8, 35))
     await move_to(hass, freezer, local(2026, 11, 5, 8, 45))
@@ -139,7 +139,7 @@ async def test_restart_never_sends_a_burst(
         sent_now = reminders(notify_calls, target)
         assert len(sent_now) == 1
         assert (
-            sent_now[0]["message"] == "2 tablet · 20:00 · with food (reminder 1 of 4)"
+            sent_now[0]["message"] == "2 tablets · 20:00 · with food (reminder 1 of 4)"
         )
     assert [e.data["dose_id"] for e in missed_events] == [f"{sid}_20261105_0800"]
     assert hass.states.get("sensor.metformin_status").state == "pending"
@@ -195,7 +195,7 @@ async def test_stock_edit_in_form_is_logged_correction(
     hass.config_entries.async_update_subentry(
         entry, subentry, data={**subentry.data, "current_stock": 50.0}
     )
-    await hass.async_block_till_done()  # update listener reloads the entry
+    await hass.async_block_till_done()  # applied in place by the update listener
     assert hass.states.get("sensor.metformin_stock").state == "50.0"
     records = [r for r in entry.runtime_data.history if r["type"] == "stock_set"]
     assert records[-1]["amount"] == 50.0

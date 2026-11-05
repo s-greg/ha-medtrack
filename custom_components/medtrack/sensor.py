@@ -14,7 +14,7 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.const import UnitOfTime
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .const import STATUS_OPTIONS
@@ -103,7 +103,10 @@ async def async_setup_entry(
 ) -> None:
     """Create the sensors for every medication and for the hub."""
     manager = entry.runtime_data
-    for subentry_id, medication in manager.medications.items():
+
+    @callback
+    def add_medication(subentry_id: str) -> None:
+        medication = manager.medications[subentry_id]
         async_add_entities(
             [
                 MedicationSensor(manager, subentry_id, description)
@@ -112,6 +115,10 @@ async def async_setup_entry(
             ],
             config_subentry_id=subentry_id,
         )
+
+    manager.async_register_entity_adder(add_medication)
+    for subentry_id in manager.medications:
+        add_medication(subentry_id)
     async_add_entities(HubSensor(manager, description) for description in HUB_SENSORS)
 
 

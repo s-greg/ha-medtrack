@@ -73,6 +73,18 @@ class MedicationEntity(MedTrackEntity):
             ),
         )
 
+    @property
+    def available(self) -> bool:
+        """Unavailable once the medication is deleted (until the entity goes)."""
+        return self._subentry_id in self._manager.medications
+
+    async def async_added_to_hass(self) -> None:
+        """Subscribe to updates and let the manager track this entity."""
+        await super().async_added_to_hass()
+        self.async_on_remove(
+            self._manager.async_register_entity(self._subentry_id, self)
+        )
+
 
 class HubEntity(MedTrackEntity):
     """An entity on the hub device."""

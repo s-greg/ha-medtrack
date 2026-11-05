@@ -7,7 +7,7 @@ from homeassistant.components.binary_sensor import (
     BinarySensorEntity,
     BinarySensorEntityDescription,
 )
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .coordinator import MedTrackConfigEntry
@@ -29,13 +29,18 @@ async def async_setup_entry(
 ) -> None:
     """Create the low-stock sensor for every medication that tracks stock."""
     manager = entry.runtime_data
-    for subentry_id, medication in manager.medications.items():
-        if not medication.tracks_stock:
-            continue
-        async_add_entities(
-            [LowStockSensor(manager, subentry_id, LOW_STOCK)],
-            config_subentry_id=subentry_id,
-        )
+
+    @callback
+    def add_medication(subentry_id: str) -> None:
+        if manager.medications[subentry_id].tracks_stock:
+            async_add_entities(
+                [LowStockSensor(manager, subentry_id, LOW_STOCK)],
+                config_subentry_id=subentry_id,
+            )
+
+    manager.async_register_entity_adder(add_medication)
+    for subentry_id in manager.medications:
+        add_medication(subentry_id)
 
 
 class LowStockSensor(MedicationEntity, BinarySensorEntity):

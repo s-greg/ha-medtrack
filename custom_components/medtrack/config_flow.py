@@ -54,6 +54,7 @@ from .const import (
     CONF_REQUIRE_UNLOCK,
     CONF_REREMIND_INTERVAL,
     CONF_SNOOZE_LENGTH,
+    CONF_TAP_PATH,
     CONF_TIMES,
     CONF_UNIT,
     DEFAULT_CRITICAL_VOLUME,
@@ -120,6 +121,43 @@ def _float_selector(
     return NumberSelector(config)
 
 
+class OptionalNumberSelector(NumberSelector):
+    """A number box that may be left empty.
+
+    The frontend can send an emptied number box as null or "" instead of
+    leaving the field out; the plain NumberSelector rejects both, which made
+    optional fields such as "Default refill amount" effectively required.
+    Empty becomes None, and the flow treats None as "not set".
+    """
+
+    def __init__(self, config: NumberSelectorConfig, *, integer: bool = False) -> None:
+        """Create; `integer` returns whole numbers."""
+        super().__init__(config)
+        self._integer = integer
+
+    def __call__(self, data: Any) -> float | int | None:
+        """Validate, allowing an empty value."""
+        if data is None or (isinstance(data, str) and not data.strip()):
+            return None
+        value = super().__call__(data)
+        return int(value) if self._integer else value
+
+
+def _optional_float() -> OptionalNumberSelector:
+    return OptionalNumberSelector(
+        NumberSelectorConfig(min=0, step="any", mode=NumberSelectorMode.BOX)
+    )
+
+
+def _optional_int(bounds: tuple[int, int], unit: str | None = None) -> Any:
+    config = NumberSelectorConfig(
+        min=bounds[0], max=bounds[1], step=1, mode=NumberSelectorMode.BOX
+    )
+    if unit is not None:
+        config["unit_of_measurement"] = unit
+    return OptionalNumberSelector(config, integer=True)
+
+
 def hub_settings_schema(targets: list[SelectOptionDict]) -> probatio.Schema:
     """Schema for the hub settings shared by the config and options flows."""
     return probatio.Schema(
@@ -162,16 +200,29 @@ def hub_settings_schema(targets: list[SelectOptionDict]) -> probatio.Schema:
             probatio.Required(
                 CONF_HISTORY_RETENTION, default=DEFAULT_HISTORY_RETENTION
             ): _int_selector(RANGE_HISTORY_RETENTION, "d"),
+            probatio.Optional(CONF_TAP_PATH): TextSelector(),
         }
     )
 
 
-def _validate_hub(user_input: Mapping[str, Any]) -> dict[str, str]:
-    """Validate hub settings beyond what the selectors check."""
+def _validate_hub(
+    user_input: Mapping[str, Any],
+) -> tuple[dict[str, Any], dict[str, str]]:
+    """Validate hub settings beyond what the selectors check.
+
+    Returns (options to store, errors). An empty tap page is not stored.
+    """
     errors: dict[str, str] = {}
-    if not user_input.get(CONF_NOTIFY_TARGETS):
+    options = dict(user_input)
+    if not options.get(CONF_NOTIFY_TARGETS):
         errors[CONF_NOTIFY_TARGETS] = "no_targets"
-    return errors
+    tap_path = str(options.pop(CONF_TAP_PATH, None) or "").strip()
+    if tap_path:
+        if tap_path.startswith(("/", "http://", "https://")):
+            options[CONF_TAP_PATH] = tap_path
+        else:
+            errors[CONF_TAP_PATH] = "invalid_tap_path"
+    return options, errors
 
 
 # ---------------------------------------------------------------------------
@@ -209,9 +260,8 @@ class MedTrackConfigFlow(ConfigFlow, domain=DOMAIN):
 
         errors: dict[str, str] = {}
         if user_input is not None:
-            errors = _validate_hub(user_input)
+            options, errors = _validate_hub(user_input)
             if not errors:
-                options = dict(user_input)
                 name = options.pop(CONF_NAME).strip() or DEFAULT_NAME
                 return self.async_create_entry(title=name, data={}, options=options)
 
@@ -234,9 +284,9 @@ class MedTrackOptionsFlow(OptionsFlow):
         """Show the hub settings form."""
         errors: dict[str, str] = {}
         if user_input is not None:
-            errors = _validate_hub(user_input)
+            options, errors = _validate_hub(user_input)
             if not errors:
-                return self.async_create_entry(data=user_input)
+                return self.async_create_entry(data=options)
 
         current = self.config_entry.options
         # Keep already configured targets selectable even if the phone is
@@ -283,9 +333,9 @@ def medication_schema() -> probatio.Schema:
             probatio.Optional(CONF_INSTRUCTIONS): TextSelector(),
             # Both optional: no stock = no stock tracking for this medication,
             # no threshold = track stock but never alert.
-            probatio.Optional(CONF_CURRENT_STOCK): _float_selector(),
-            probatio.Optional(CONF_LOW_STOCK_THRESHOLD): _float_selector(),
-            probatio.Optional(CONF_REFILL_AMOUNT): _float_selector(),
+            probatio.Optional(CONF_CURRENT_STOCK): _optional_float(),
+            probatio.Optional(CONF_LOW_STOCK_THRESHOLD): _optional_float(),
+            probatio.Optional(CONF_REFILL_AMOUNT): _optional_float(),
             probatio.Required(
                 CONF_CRITICAL_MODE, default=CriticalMode.NEVER.value
             ): SelectSelector(
@@ -298,10 +348,10 @@ def medication_schema() -> probatio.Schema:
             probatio.Optional(SECTION_OVERRIDES): section(
                 probatio.Schema(
                     {
-                        probatio.Optional(CONF_REREMIND_INTERVAL): _int_selector(
+                        probatio.Optional(CONF_REREMIND_INTERVAL): _optional_int(
                             RANGE_REREMIND_INTERVAL, "min"
                         ),
-                        probatio.Optional(CONF_MAX_REMINDERS): _int_selector(
+                        probatio.Optional(CONF_MAX_REMINDERS): _optional_int(
                             RANGE_MAX_REMINDERS
                         ),
                     }
@@ -439,8 +489,7 @@ class MedicationSubentryFlow(ConfigSubentryFlow):
             if not errors:
                 if subentry is None:
                     return self.async_create_entry(title=title, data=data)
-                # The entry's update listener reloads MedTrack, so use the
-                # non-reloading variant (the reloading one raises with listeners).
+                # The entry's update listener applies the change in place.
                 return self.async_update_and_abort(
                     entry, subentry, title=title, data=data
                 )

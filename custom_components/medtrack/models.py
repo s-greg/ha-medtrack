@@ -27,6 +27,7 @@ from .const import (
     CONF_REQUIRE_UNLOCK,
     CONF_REREMIND_INTERVAL,
     CONF_SNOOZE_LENGTH,
+    CONF_TAP_PATH,
     CONF_TIMES,
     CONF_UNIT,
     DEFAULT_CRITICAL_VOLUME,
@@ -57,6 +58,7 @@ class HubSettings:
     require_unlock: bool
     critical_volume: float
     history_retention: int
+    tap_path: str | None = None  # None = the medication's device page
 
     @classmethod
     def from_options(cls, options: Mapping[str, Any]) -> HubSettings:
@@ -84,6 +86,7 @@ class HubSettings:
             history_retention=int(
                 options.get(CONF_HISTORY_RETENTION, DEFAULT_HISTORY_RETENTION)
             ),
+            tap_path=str(options.get(CONF_TAP_PATH) or "").strip() or None,
         )
 
 

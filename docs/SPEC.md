@@ -42,7 +42,7 @@ These were checked against the Companion App docs (companion.home-assistant.io) 
 - **Coordinator / manager object** per config entry (stored on `entry.runtime_data`) owns: the schedule, dose state machine, notification sending, action-event listener, inventory, and history store.
 - **Persistence:** `homeassistant.helpers.storage.Store`, key `medtrack.<entry_id>`, with a schema version and migration function. Use delayed saves for routine writes and immediate saves for state transitions.
 - **No polling.** Use `async_track_point_in_time` (or `async_track_point_in_utc_time`) for each scheduled event; reschedule on startup, on subentry change, and at local midnight for the next day.
-- When a subentry is added, changed or removed: reload the config entry (update listener) so schedules and entities rebuild cleanly.
+- When a subentry is added, changed or removed, or the options change: the update listener applies the change **in place, without reloading the entry** (owner request after Phase 2 testing: a reload floods the logbook with "unavailable"). Only the entities of a medication whose unit, display precision or stock tracking changed are re-created; renames update the device name. Not-yet-started doses are rebuilt when times, days or the active flag change. After unload the manager is stopped and may not set timers, send or save.
 
 ## 4. Configuration
 
@@ -61,6 +61,7 @@ These were checked against the Companion App docs (companion.home-assistant.io) 
 | Require unlock for "Taken" | bool | false | Sets `authenticationRequired` on the Taken action |
 | Critical alert volume | float (0.1–1.0) | 1.0 | Volume in the critical `sound` block (§6) |
 | History retention | days (0 = forever) | 0 | |
+| Page to open when tapping a reminder | text (optional) | empty | Path (`/...`) or full URL; empty = the medication's device page (§6) |
 
 ### 4.2 Medication (subentry flow + reconfigure)
 
@@ -77,7 +78,7 @@ These were checked against the Companion App docs (companion.home-assistant.io) 
 | Default refill amount | float, optional | Pre-fills the refill action |
 | Critical mode | select | `never` / `final_reminder` / `all_reminders` |
 | Overrides | optional | Re-remind interval, max reminders (fall back to hub values) |
-| Active | bool | Paused medications send nothing |
+| Active | bool | Paused medications send nothing. Pausing while a dose runs records it as `skipped` (`source: system`, `reason: paused`) and clears its notification |
 
 Validation: times are unique and valid; at least one day; numeric ranges as above. All UI strings in `strings.json` / `translations/en.json`.
 
@@ -107,12 +108,13 @@ Per dose (one notification per medication dose; doses at the same minute are sep
 action: notify.mobile_app_<device>
 data:
   title: "Medication: <name>"
-  message: "<dose amount> <unit> · <HH:MM><instructions suffix> (reminder n of max)"
+  message: "<dose amount> <unit, plural above 1> · <HH:MM><instructions suffix> (reminder n of max)"
   data:
     tag: "medtrack_<dose_id>"
     group: "medtrack"
     push:
       interruption-level: "<time-sensitive | critical>"
+    url: "<tap page: hub option, else /config/devices/device/<device_id>>"
     action_data:
       dose_id: "<dose_id>"
     actions:
@@ -128,6 +130,9 @@ data:
 - Use `interruption-level: critical` when the medication's critical mode says so (final reminder, or all reminders). Otherwise use the hub's interruption level.
 - Critical sends only also include `push.sound: {name: default, critical: 1, volume: <critical alert volume>}`.
 - The phone list in the hub flows shows each phone's name (from its mobile_app entry); the stored value is the notify service name.
+- Units are pluralised for amounts above 1 with simple English rules (tablet → tablets, patch → patches); abbreviations and words with capitals, digits or fewer than 4 letters (ml, mg, IU) stay as typed.
+- Every reminder and the "Missed" notification carry `url`, so tapping the notification body opens the configured page (default: the medication's device page with its Take / Skip / Snooze buttons).
+- Pressing a Take / Skip / Snooze button when there is nothing to act on raises a user-visible error instead of silently doing nothing.
 - Optional `icon: "sfsymbols:..."` on actions (iOS 15+); keep it optional.
 - Parse actions by prefix `MEDTRACK_`, then verb, then dose ID. Prefer `action_data.dose_id` when present, fall back to parsing the identifier.
 - Send to all targets concurrently. If one target fails, log a warning and continue with the others; never let a notify error break the scheduler.

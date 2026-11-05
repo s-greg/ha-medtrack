@@ -79,18 +79,3 @@ async def test_unload(hass: HomeAssistant, hub_entry: MockConfigEntry) -> None:
     assert await hass.config_entries.async_unload(hub_entry.entry_id)
     await hass.async_block_till_done()
     assert hub_entry.state is ConfigEntryState.NOT_LOADED
-
-
-async def test_button_press_is_harmless(
-    hass: HomeAssistant, hub_entry: MockConfigEntry
-) -> None:
-    """Buttons can be pressed (dose handling arrives in Phase 2)."""
-    assert await hass.config_entries.async_setup(hub_entry.entry_id)
-    await hass.async_block_till_done()
-    for action in ("take", "skip", "snooze"):
-        await hass.services.async_call(
-            "button",
-            "press",
-            {"entity_id": f"button.metformin_{action}"},
-            blocking=True,
-        )
