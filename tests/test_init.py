@@ -67,9 +67,9 @@ async def test_setup_creates_devices_and_entities(
     assert stock.state == "30.0"
     assert stock.attributes[ATTR_UNIT_OF_MEASUREMENT] == "tablet"
     assert hass.states.get("sensor.metformin_status").state == "idle"
-    assert hass.states.get("sensor.metformin_next_dose").state == STATE_UNKNOWN
+    assert hass.states.get("sensor.metformin_next_dose").state != STATE_UNKNOWN
     assert hass.states.get("binary_sensor.metformin_low_stock").state == STATE_OFF
-    assert hass.states.get("sensor.metformin_taken_today").attributes["due_today"] == 0
+    assert hass.states.get("sensor.metformin_taken_today").attributes["due_today"] == 2
 
 
 async def test_unload(hass: HomeAssistant, hub_entry: MockConfigEntry) -> None:

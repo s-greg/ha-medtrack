@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
 
+from freezegun.api import FrozenDateTimeFactory
 from homeassistant.config_entries import ConfigSubentryData
-from homeassistant.core import HomeAssistant, ServiceCall
+from homeassistant.core import Context, HomeAssistant, ServiceCall
+from homeassistant.util import dt as dt_util
 import pytest
 from pytest_homeassistant_custom_component.common import (
     MockConfigEntry,
+    async_fire_time_changed,
     async_mock_service,
 )
 
@@ -88,17 +92,20 @@ def notify_calls(hass: HomeAssistant) -> dict[str, list[ServiceCall]]:
     return {target: async_mock_service(hass, "notify", target) for target in TARGETS}
 
 
-@pytest.fixture
-def hub_entry(hass: HomeAssistant) -> MockConfigEntry:
-    """A MedTrack hub with one medication, not yet set up."""
+def make_hub_entry(
+    hass: HomeAssistant,
+    medication: dict[str, Any] | None = None,
+    options: dict[str, Any] | None = None,
+) -> MockConfigEntry:
+    """A hub with one medication 'Metformin'; overrides are merged in."""
     entry = MockConfigEntry(
         domain=DOMAIN,
         title="MedTrack",
         data={},
-        options=HUB_OPTIONS,
+        options=HUB_OPTIONS | (options or {}),
         subentries_data=[
             ConfigSubentryData(
-                data=MEDICATION_DATA,
+                data=MEDICATION_DATA | (medication or {}),
                 subentry_type=SUBENTRY_MEDICATION,
                 title="Metformin",
                 unique_id=None,
@@ -107,3 +114,76 @@ def hub_entry(hass: HomeAssistant) -> MockConfigEntry:
     )
     entry.add_to_hass(hass)
     return entry
+
+
+@pytest.fixture
+def hub_entry(hass: HomeAssistant) -> MockConfigEntry:
+    """A MedTrack hub with one medication, not yet set up."""
+    return make_hub_entry(hass)
+
+
+# --- Time and action helpers for the scheduler tests ---------------------------
+
+TZ_NAME = "Europe/Amsterdam"
+
+
+async def use_amsterdam(hass: HomeAssistant) -> None:
+    """Run the test in a European time zone with real DST changes."""
+    await hass.config.async_set_time_zone(TZ_NAME)
+
+
+def local(*args: int) -> datetime:
+    """Aware datetime in the test time zone, e.g. local(2026, 11, 5, 8, 0)."""
+    return datetime(*args, tzinfo=dt_util.get_time_zone(TZ_NAME))
+
+
+async def move_to(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory, when: datetime
+) -> None:
+    """Jump the clock to `when` and run every timer that became due."""
+    freezer.move_to(when)
+    async_fire_time_changed(hass, when)
+    await hass.async_block_till_done()
+
+
+async def tap(
+    hass: HomeAssistant,
+    action: str,
+    dose_id: str | None = None,
+    user_id: str | None = "user-1",
+) -> None:
+    """Simulate tapping a notification button on the iPhone."""
+    data: dict[str, Any] = {"action": action}
+    if dose_id is not None:
+        data["action_data"] = {"dose_id": dose_id}
+    hass.bus.async_fire(
+        "mobile_app_notification_action", data, context=Context(user_id=user_id)
+    )
+    await hass.async_block_till_done()
+
+
+def sent(calls: dict[str, list[ServiceCall]], target: str = TARGETS[0]) -> list[dict]:
+    """Payloads sent to one phone, in order."""
+    return [dict(call.data) for call in calls[target]]
+
+
+def reminders(
+    calls: dict[str, list[ServiceCall]], target: str = TARGETS[0]
+) -> list[dict]:
+    """Payloads that are real notifications (not clear commands)."""
+    return [p for p in sent(calls, target) if p.get("message") != "clear_notification"]
+
+
+def clears(calls: dict[str, list[ServiceCall]], target: str = TARGETS[0]) -> list[str]:
+    """Tags cleared on one phone, in order."""
+    return [
+        p["data"]["tag"]
+        for p in sent(calls, target)
+        if p.get("message") == "clear_notification"
+    ]
+
+
+def reset(calls: dict[str, list[ServiceCall]]) -> None:
+    """Forget captured calls."""
+    for target_calls in calls.values():
+        target_calls.clear()

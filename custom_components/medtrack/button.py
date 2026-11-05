@@ -19,7 +19,7 @@ PARALLEL_UPDATES = 0
 class MedTrackButtonDescription(ButtonEntityDescription):
     """Describes a MedTrack button."""
 
-    press_fn: Callable[[MedTrackManager, str, str | None], Awaitable[None]]
+    press_fn: Callable[[MedTrackManager, str, str | None], Awaitable[bool]]
 
 
 BUTTONS: tuple[MedTrackButtonDescription, ...] = (

@@ -9,6 +9,7 @@ from homeassistant.helpers import device_registry as dr, entity_registry as er
 from .const import DOMAIN
 from .coordinator import MedTrackConfigEntry, MedTrackManager
 from .entity import hub_device_info
+from .store import create_store
 
 PLATFORMS: list[Platform] = [Platform.BINARY_SENSOR, Platform.BUTTON, Platform.SENSOR]
 
@@ -59,6 +60,11 @@ async def _async_update_listener(
 ) -> None:
     """Reload the entry after its configuration changed."""
     await hass.config_entries.async_reload(entry.entry_id)
+
+
+async def async_remove_entry(hass: HomeAssistant, entry: MedTrackConfigEntry) -> None:
+    """Delete the stored doses and history when the hub is deleted."""
+    await create_store(hass, entry.entry_id).async_remove()
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: MedTrackConfigEntry) -> bool:

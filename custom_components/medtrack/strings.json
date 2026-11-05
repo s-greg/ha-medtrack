@@ -257,5 +257,15 @@
         "name": "Snooze"
       }
     }
+  },
+  "issues": {
+    "missing_target": {
+      "title": "MedTrack cannot reach {target}",
+      "description": "The phone {target} has no notification service any more, so it gets no medication reminders. This usually happens after the phone was renamed or removed in the Companion App. Open MedTrack, select Configure and choose the phone again. This message disappears after the next reminder reaches it."
+    },
+    "rate_budget": {
+      "title": "MedTrack may exceed the iPhone notification limit",
+      "description": "In the worst case MedTrack could send {budget} notifications per phone per day. Apple allows 500 per phone per day (critical alerts excluded). Lower the max reminders or max snoozes in the MedTrack settings or per medication."
+    }
   }
 }

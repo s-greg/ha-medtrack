@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import timedelta
 from enum import StrEnum
 from typing import Final
 
@@ -94,6 +95,55 @@ class DoseState(StrEnum):
     SKIPPED = "skipped"
     MISSED = "missed"
 
+
+ACTIVE_STATES: Final = frozenset({DoseState.PENDING, DoseState.SNOOZED})
+TAKEN_STATES: Final = frozenset({DoseState.TAKEN, DoseState.TAKEN_LATE})
+
+
+class Source(StrEnum):
+    """Where a dose transition or stock change came from (history `source`)."""
+
+    NOTIFICATION = "notification"
+    BUTTON = "button"
+    SERVICE = "service"
+    SYSTEM = "system"
+    CONFIG = "config"
+
+
+# --- Scheduling -----------------------------------------------------------------
+# How far ahead dose timers are built (spec §11: 24-48 h).
+SCHEDULE_HORIZON: Final = timedelta(hours=48)
+# "Taken late" is accepted until this long after the scheduled time; resolved
+# doses are also kept in memory this long (for idempotent duplicate taps).
+DOSE_RETENTION: Final = timedelta(hours=24)
+# After a restart, at most this much downtime is reconstructed.
+MAX_RECOVERY: Final = timedelta(hours=48)
+# Warn when the worst-case pushes per phone per day exceed this (limit is 500).
+RATE_BUDGET_WARNING: Final = 400
+NOTIFY_TIMEOUT: Final = 30  # seconds per notify call
+
+# --- Notifications ------------------------------------------------------------
+NOTIFY_GROUP: Final = "medtrack"
+TAG_PREFIX: Final = "medtrack_"
+ACTION_PREFIX: Final = "MEDTRACK_"
+EVENT_MOBILE_APP_ACTION: Final = "mobile_app_notification_action"
+
+
+class ActionVerb(StrEnum):
+    """Verb part of a MEDTRACK_<VERB>_<id> action identifier."""
+
+    TAKEN = "TAKEN"
+    SNOOZE = "SNOOZE"
+    SKIP = "SKIP"
+
+
+# Bus events: medtrack_dose_<state>
+EVENT_DOSE_PREFIX: Final = f"{DOMAIN}_dose_"
+
+# --- Storage -------------------------------------------------------------------
+STORAGE_VERSION: Final = 1
+STORAGE_MINOR_VERSION: Final = 1
+SAVE_DELAY: Final = 10  # seconds, for routine (non-transition) saves
 
 # Values of the per-medication status sensor (state of the most recent dose).
 STATUS_IDLE: Final = "idle"

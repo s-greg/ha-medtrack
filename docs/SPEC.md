@@ -179,7 +179,7 @@ All target a medication via `device_id` or `entity_id` of one of its entities.
 Record: `{id, type: dose|refill|stock_set|undo, medication_id, dose_id?, scheduled_at?, state?, at, user_id?, amount?, source: notification|button|service|system|config}`. `config` marks a stock correction made in the medication form.
 
 - Persist the in-flight state of all pending doses so a restart resumes them.
-- **Startup recovery:** for doses whose time passed while HA was down, resume if still inside the reminder window (send the next reminder immediately), otherwise mark `missed` with `source: system`.
+- **Startup recovery (never a burst):** per medication, only the most recent dose that is still inside its reminder window is resumed. If a reminder became due while HA was down, the next reminder is sent immediately, otherwise it follows its normal timeline (so a quick reload does not cause an extra reminder). All older doses, and the newest one if its window has passed, are marked `missed` silently (`source: system`, no notifications). At most the last 48 h of downtime are reconstructed.
 - Apply the retention setting daily.
 - Schema version 1 plus a migration hook.
 - Diagnostics (`diagnostics.py`) returning config and the last 50 history records, with nothing redacted except user IDs.
