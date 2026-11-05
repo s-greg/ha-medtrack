@@ -1,0 +1,35 @@
+[project]
+name = "ha-medtrack"
+version = "0.1.0"
+description = "MedTrack: medication reminders and stock tracking for Home Assistant"
+requires-python = ">=3.14"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+
+[tool.ruff]
+target-version = "py314"
+line-length = 88
+
+[tool.ruff.lint]
+select = [
+    "ASYNC", # async pitfalls (blocking calls in the event loop)
+    "B",     # bugbear
+    "E",
+    "F",
+    "W",
+    "I",     # import sorting
+    "UP",    # modern syntax
+    "SIM",
+    "RUF",
+    "LOG",
+    "PTH",
+]
+ignore = ["E501"]
+
+[tool.ruff.lint.isort]
+force-sort-within-sections = true
+known-first-party = ["custom_components"]
+combine-as-imports = true

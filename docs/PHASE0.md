@@ -81,6 +81,17 @@ wsl -e bash -lc "cd /mnt/d/Claude/dev/ha-medtrack && source ~/venvs/medtrack/bin
   256×256, icon@2x 512×512, PNG with transparency. Whether the HACS validation action accepts the
   local `brand/` folder (or needs `ignore: brands`) will be checked in Phase 4.
 
+### 2.6a Found during Phase 1 (HA 2026.10 changes not in the spec)
+- **Schemas use `probatio`, not voluptuous.** All core config flows `import probatio`
+  (voluptuous-compatible API: `probatio.Schema`, `Required`, `Optional`, `All`, `Coerce`).
+  voluptuous is no longer an HA dependency, so MedTrack uses probatio.
+- **Devices belong to one config entry.** `DeviceInfo(via_device=...)` is deprecated
+  (removal 2027.8); use `via_device_id=dr.async_get_device_id_by_identifier(...)`.
+  `async_get_device(identifiers)` and `DeviceEntry.config_entries_subentries` now raise in
+  tests; use `async_get_device_by_identifier(identifier, config_entry_id)` and
+  `DeviceEntry.config_entry_id` / `config_subentry_id`.
+- `NumberSelectorConfig` rejects explicit `None` values (e.g. `unit_of_measurement=None`).
+
 ### 2.7 Other APIs used (not marked VERIFY, checked anyway)
 - `async_track_point_in_utc_time`, `async_call_later`, `async_track_time_change` exist unchanged.
 - `Store(hass, version, key, minor_version=...)`; migration by subclassing and overriding
@@ -89,7 +100,18 @@ wsl -e bash -lc "cd /mnt/d/Claude/dev/ha-medtrack && source ~/venvs/medtrack/bin
 
 ## 3. Questions and ambiguities in the spec
 
-Each item has a proposed default (→). Answers to be recorded here.
+Each item has a proposed default (→).
+
+### Owner answers (2026-11-05)
+
+1. Repo `https://github.com/s-greg/ha-medtrack`; `documentation` = repo URL, `issue_tracker` = repo URL + `/issues`, `codeowners` = `@s-greg`.
+2. Owner runs HA 2026.10.4; `hacs.json` minimum `2026.10.0`.
+3. Yes: add `push.sound: {name: default, critical: 1, volume: <v>}` for critical sends only. New hub option **Critical alert volume** (0.1–1.0, default 1.0) supplies `<v>`.
+4. Agreed: diagnostics redact notify target names and user IDs, keep medication details.
+5. Agreed: "Taken late" available until 24 h after the scheduled time.
+6–21. Defaults approved, **except #12, replaced by:** after a restart, never send a burst of reminders. Per medication, only the most recent dose still inside its reminder window is resumed (next reminder immediately). All older doses whose window passed during downtime are marked `missed` silently (`source: system`), with no notifications. A test covers this.
+
+### Original questions and proposed defaults
 
 **Need an answer from the owner**
 1. GitHub repo URL / username for `codeowners`, `documentation`, `issue_tracker` (git user is `s-greg`).

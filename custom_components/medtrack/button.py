@@ -1,0 +1,72 @@
+"""Buttons for MedTrack (take / skip / snooze the current dose)."""
+
+from __future__ import annotations
+
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
+
+from homeassistant.components.button import ButtonEntity, ButtonEntityDescription
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
+
+from .coordinator import MedTrackConfigEntry, MedTrackManager
+from .entity import MedicationEntity
+
+PARALLEL_UPDATES = 0
+
+
+@dataclass(frozen=True, kw_only=True)
+class MedTrackButtonDescription(ButtonEntityDescription):
+    """Describes a MedTrack button."""
+
+    press_fn: Callable[[MedTrackManager, str, str | None], Awaitable[None]]
+
+
+BUTTONS: tuple[MedTrackButtonDescription, ...] = (
+    MedTrackButtonDescription(
+        key="take",
+        translation_key="take",
+        press_fn=lambda m, sid, uid: m.async_take(sid, user_id=uid),
+    ),
+    MedTrackButtonDescription(
+        key="skip",
+        translation_key="skip",
+        press_fn=lambda m, sid, uid: m.async_skip(sid, user_id=uid),
+    ),
+    MedTrackButtonDescription(
+        key="snooze",
+        translation_key="snooze",
+        press_fn=lambda m, sid, uid: m.async_snooze(sid, user_id=uid),
+    ),
+)
+
+
+async def async_setup_entry(
+    hass: HomeAssistant,
+    entry: MedTrackConfigEntry,
+    async_add_entities: AddConfigEntryEntitiesCallback,
+) -> None:
+    """Create the buttons for every medication."""
+    manager = entry.runtime_data
+    for subentry_id in manager.medications:
+        async_add_entities(
+            [
+                MedTrackButton(manager, subentry_id, description)
+                for description in BUTTONS
+            ],
+            config_subentry_id=subentry_id,
+        )
+
+
+class MedTrackButton(MedicationEntity, ButtonEntity):
+    """A dose action button."""
+
+    entity_description: MedTrackButtonDescription
+
+    async def async_press(self) -> None:
+        """Run the action for this medication."""
+        await self.entity_description.press_fn(
+            self._manager,
+            self._subentry_id,
+            self._context.user_id if self._context else None,
+        )

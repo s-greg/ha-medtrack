@@ -1,0 +1,13 @@
+{
+  "domain": "medtrack",
+  "name": "MedTrack",
+  "codeowners": ["@s-greg"],
+  "config_flow": true,
+  "dependencies": ["mobile_app"],
+  "documentation": "https://github.com/s-greg/ha-medtrack",
+  "integration_type": "hub",
+  "iot_class": "calculated",
+  "issue_tracker": "https://github.com/s-greg/ha-medtrack/issues",
+  "requirements": [],
+  "version": "0.1.0"
+}

@@ -1,0 +1,31 @@
+{
+  "entity": {
+    "sensor": {
+      "stock": { "default": "mdi:pill-multiple" },
+      "days_remaining": { "default": "mdi:calendar-clock" },
+      "next_dose": { "default": "mdi:clock-outline" },
+      "status": {
+        "default": "mdi:pill",
+        "state": {
+          "pending": "mdi:bell-ring",
+          "snoozed": "mdi:bell-sleep",
+          "taken": "mdi:check-circle",
+          "taken_late": "mdi:check-circle-outline",
+          "skipped": "mdi:debug-step-over",
+          "missed": "mdi:alert-circle"
+        }
+      },
+      "taken_today": { "default": "mdi:check-all" },
+      "doses_due_today": { "default": "mdi:calendar-today" },
+      "doses_taken_today": { "default": "mdi:check-all" }
+    },
+    "binary_sensor": {
+      "low_stock": { "default": "mdi:package-variant", "state": { "on": "mdi:package-variant-remove" } }
+    },
+    "button": {
+      "take": { "default": "mdi:check" },
+      "skip": { "default": "mdi:debug-step-over" },
+      "snooze": { "default": "mdi:alarm-snooze" }
+    }
+  }
+}

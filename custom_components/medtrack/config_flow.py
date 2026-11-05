@@ -1,0 +1,442 @@
+"""Config flow, options flow and medication subentry flow for MedTrack."""
+
+from __future__ import annotations
+
+from collections.abc import Mapping
+from datetime import time
+from typing import Any
+
+from homeassistant.config_entries import (
+    ConfigEntry,
+    ConfigFlow,
+    ConfigFlowResult,
+    ConfigSubentry,
+    ConfigSubentryFlow,
+    OptionsFlow,
+    SubentryFlowResult,
+)
+from homeassistant.const import CONF_NAME
+from homeassistant.core import HomeAssistant, callback
+from homeassistant.data_entry_flow import section
+from homeassistant.helpers.selector import (
+    BooleanSelector,
+    NumberSelector,
+    NumberSelectorConfig,
+    NumberSelectorMode,
+    SelectSelector,
+    SelectSelectorConfig,
+    SelectSelectorMode,
+    TextSelector,
+    TextSelectorConfig,
+    TextSelectorType,
+)
+from homeassistant.util import dt as dt_util
+import probatio
+
+from .const import (
+    CONF_ACTIVE,
+    CONF_CRITICAL_MODE,
+    CONF_CRITICAL_VOLUME,
+    CONF_CURRENT_STOCK,
+    CONF_DAYS,
+    CONF_DOSE_AMOUNT,
+    CONF_EARLY_TAKE_WINDOW,
+    CONF_HISTORY_RETENTION,
+    CONF_INSTRUCTIONS,
+    CONF_INTERRUPTION_LEVEL,
+    CONF_LOW_STOCK_THRESHOLD,
+    CONF_MAX_REMINDERS,
+    CONF_MAX_SNOOZES,
+    CONF_NOTIFY_TARGETS,
+    CONF_REFILL_AMOUNT,
+    CONF_REQUIRE_UNLOCK,
+    CONF_REREMIND_INTERVAL,
+    CONF_SNOOZE_LENGTH,
+    CONF_TIMES,
+    CONF_UNIT,
+    DEFAULT_CRITICAL_VOLUME,
+    DEFAULT_EARLY_TAKE_WINDOW,
+    DEFAULT_HISTORY_RETENTION,
+    DEFAULT_INTERRUPTION_LEVEL,
+    DEFAULT_MAX_REMINDERS,
+    DEFAULT_MAX_SNOOZES,
+    DEFAULT_NAME,
+    DEFAULT_REQUIRE_UNLOCK,
+    DEFAULT_REREMIND_INTERVAL,
+    DEFAULT_SNOOZE_LENGTH,
+    DEFAULT_UNIT,
+    DOMAIN,
+    MOBILE_APP_NOTIFY_PREFIX,
+    OVERRIDE_KEYS,
+    RANGE_CRITICAL_VOLUME,
+    RANGE_EARLY_TAKE_WINDOW,
+    RANGE_HISTORY_RETENTION,
+    RANGE_MAX_REMINDERS,
+    RANGE_MAX_SNOOZES,
+    RANGE_REREMIND_INTERVAL,
+    RANGE_SNOOZE_LENGTH,
+    SECTION_OVERRIDES,
+    SUBENTRY_MEDICATION,
+    WEEKDAYS,
+    CriticalMode,
+    InterruptionLevel,
+)
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+@callback
+def available_notify_targets(hass: HomeAssistant) -> list[str]:
+    """Return the Companion App notify services (without the 'notify.' prefix)."""
+    return sorted(
+        name
+        for name in hass.services.async_services_for_domain("notify")
+        if name.startswith(MOBILE_APP_NOTIFY_PREFIX)
+    )
+
+
+def _int_selector(bounds: tuple[int, int], unit: str | None = None) -> Any:
+    """Return a number box that yields an int within bounds."""
+    config = NumberSelectorConfig(
+        min=bounds[0], max=bounds[1], step=1, mode=NumberSelectorMode.BOX
+    )
+    if unit is not None:  # the selector rejects an explicit None
+        config["unit_of_measurement"] = unit
+    return probatio.All(NumberSelector(config), probatio.Coerce(int))
+
+
+def _float_selector(
+    minimum: float = 0, maximum: float | None = None, step: float | str = "any"
+) -> NumberSelector:
+    """Return a number box that yields a float."""
+    config = NumberSelectorConfig(min=minimum, step=step, mode=NumberSelectorMode.BOX)
+    if maximum is not None:
+        config["max"] = maximum
+    return NumberSelector(config)
+
+
+def hub_settings_schema(targets: list[str]) -> probatio.Schema:
+    """Schema for the hub settings shared by the config and options flows."""
+    return probatio.Schema(
+        {
+            probatio.Required(CONF_NOTIFY_TARGETS): SelectSelector(
+                SelectSelectorConfig(
+                    options=targets, multiple=True, mode=SelectSelectorMode.LIST
+                )
+            ),
+            probatio.Required(
+                CONF_REREMIND_INTERVAL, default=DEFAULT_REREMIND_INTERVAL
+            ): _int_selector(RANGE_REREMIND_INTERVAL, "min"),
+            probatio.Required(
+                CONF_MAX_REMINDERS, default=DEFAULT_MAX_REMINDERS
+            ): _int_selector(RANGE_MAX_REMINDERS),
+            probatio.Required(
+                CONF_MAX_SNOOZES, default=DEFAULT_MAX_SNOOZES
+            ): _int_selector(RANGE_MAX_SNOOZES),
+            probatio.Required(
+                CONF_SNOOZE_LENGTH, default=DEFAULT_SNOOZE_LENGTH
+            ): _int_selector(RANGE_SNOOZE_LENGTH, "min"),
+            probatio.Required(
+                CONF_EARLY_TAKE_WINDOW, default=DEFAULT_EARLY_TAKE_WINDOW
+            ): _int_selector(RANGE_EARLY_TAKE_WINDOW, "min"),
+            probatio.Required(
+                CONF_INTERRUPTION_LEVEL, default=DEFAULT_INTERRUPTION_LEVEL.value
+            ): SelectSelector(
+                SelectSelectorConfig(
+                    options=[level.value for level in InterruptionLevel],
+                    translation_key=CONF_INTERRUPTION_LEVEL,
+                    mode=SelectSelectorMode.DROPDOWN,
+                )
+            ),
+            probatio.Required(
+                CONF_REQUIRE_UNLOCK, default=DEFAULT_REQUIRE_UNLOCK
+            ): BooleanSelector(),
+            probatio.Required(
+                CONF_CRITICAL_VOLUME, default=DEFAULT_CRITICAL_VOLUME
+            ): _float_selector(*RANGE_CRITICAL_VOLUME, step=0.1),
+            probatio.Required(
+                CONF_HISTORY_RETENTION, default=DEFAULT_HISTORY_RETENTION
+            ): _int_selector(RANGE_HISTORY_RETENTION, "d"),
+        }
+    )
+
+
+def _validate_hub(user_input: Mapping[str, Any]) -> dict[str, str]:
+    """Validate hub settings beyond what the selectors check."""
+    errors: dict[str, str] = {}
+    if not user_input.get(CONF_NOTIFY_TARGETS):
+        errors[CONF_NOTIFY_TARGETS] = "no_targets"
+    return errors
+
+
+# ---------------------------------------------------------------------------
+# Hub config flow
+# ---------------------------------------------------------------------------
+
+
+class MedTrackConfigFlow(ConfigFlow, domain=DOMAIN):
+    """Create a MedTrack hub."""
+
+    VERSION = 1
+    MINOR_VERSION = 1
+
+    @staticmethod
+    @callback
+    def async_get_options_flow(config_entry: ConfigEntry) -> MedTrackOptionsFlow:
+        """Return the options flow."""
+        return MedTrackOptionsFlow()
+
+    @classmethod
+    @callback
+    def async_get_supported_subentry_types(
+        cls, config_entry: ConfigEntry
+    ) -> dict[str, type[ConfigSubentryFlow]]:
+        """Return the subentry types this integration supports."""
+        return {SUBENTRY_MEDICATION: MedicationSubentryFlow}
+
+    async def async_step_user(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Ask for the hub name and global settings."""
+        targets = available_notify_targets(self.hass)
+        if not targets:
+            return self.async_abort(reason="no_notify_targets")
+
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            errors = _validate_hub(user_input)
+            if not errors:
+                options = dict(user_input)
+                name = options.pop(CONF_NAME).strip() or DEFAULT_NAME
+                return self.async_create_entry(title=name, data={}, options=options)
+
+        schema = probatio.Schema(
+            {probatio.Required(CONF_NAME, default=DEFAULT_NAME): TextSelector()}
+        ).extend(hub_settings_schema(targets).schema)
+        return self.async_show_form(
+            step_id="user",
+            data_schema=self.add_suggested_values_to_schema(schema, user_input),
+            errors=errors,
+        )
+
+
+class MedTrackOptionsFlow(OptionsFlow):
+    """Change the hub settings."""
+
+    async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Show the hub settings form."""
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            errors = _validate_hub(user_input)
+            if not errors:
+                return self.async_create_entry(data=user_input)
+
+        current = self.config_entry.options
+        # Keep already configured targets selectable even if the phone is
+        # currently missing, so the form does not reject the saved value.
+        targets = sorted(
+            set(available_notify_targets(self.hass))
+            | set(current.get(CONF_NOTIFY_TARGETS, []))
+        )
+        return self.async_show_form(
+            step_id="init",
+            data_schema=self.add_suggested_values_to_schema(
+                hub_settings_schema(targets), user_input or current
+            ),
+            errors=errors,
+        )
+
+
+# ---------------------------------------------------------------------------
+# Medication subentry flow
+# ---------------------------------------------------------------------------
+
+
+def medication_schema() -> probatio.Schema:
+    """Schema for the medication add/reconfigure form."""
+    return probatio.Schema(
+        {
+            probatio.Required(CONF_NAME): TextSelector(),
+            probatio.Required(CONF_DOSE_AMOUNT, default=1): _float_selector(),
+            probatio.Required(CONF_UNIT, default=DEFAULT_UNIT): TextSelector(),
+            probatio.Required(CONF_TIMES, default=["08:00"]): TextSelector(
+                TextSelectorConfig(type=TextSelectorType.TIME, multiple=True)
+            ),
+            probatio.Required(CONF_DAYS, default=list(WEEKDAYS)): SelectSelector(
+                SelectSelectorConfig(
+                    options=list(WEEKDAYS),
+                    multiple=True,
+                    translation_key="weekday",
+                    mode=SelectSelectorMode.LIST,
+                )
+            ),
+            probatio.Optional(CONF_INSTRUCTIONS): TextSelector(),
+            probatio.Required(CONF_CURRENT_STOCK, default=0): _float_selector(),
+            probatio.Required(CONF_LOW_STOCK_THRESHOLD, default=0): _float_selector(),
+            probatio.Optional(CONF_REFILL_AMOUNT): _float_selector(),
+            probatio.Required(
+                CONF_CRITICAL_MODE, default=CriticalMode.NEVER.value
+            ): SelectSelector(
+                SelectSelectorConfig(
+                    options=[mode.value for mode in CriticalMode],
+                    translation_key=CONF_CRITICAL_MODE,
+                    mode=SelectSelectorMode.DROPDOWN,
+                )
+            ),
+            probatio.Optional(SECTION_OVERRIDES): section(
+                probatio.Schema(
+                    {
+                        probatio.Optional(CONF_REREMIND_INTERVAL): _int_selector(
+                            RANGE_REREMIND_INTERVAL, "min"
+                        ),
+                        probatio.Optional(CONF_MAX_REMINDERS): _int_selector(
+                            RANGE_MAX_REMINDERS
+                        ),
+                    }
+                ),
+                {"collapsed": True},
+            ),
+            probatio.Required(CONF_ACTIVE, default=True): BooleanSelector(),
+        }
+    )
+
+
+def parse_time(value: str) -> str | None:
+    """Normalise 'H:MM', 'HH:MM' or 'HH:MM:SS' to 'HH:MM'; None if invalid."""
+    parsed: time | None = dt_util.parse_time(value.strip()) if value else None
+    if parsed is None or parsed.second or parsed.microsecond:
+        return None
+    return f"{parsed.hour:02d}:{parsed.minute:02d}"
+
+
+def validate_medication(
+    user_input: Mapping[str, Any], other_names: set[str]
+) -> tuple[str, dict[str, Any], dict[str, str]]:
+    """Validate the medication form.
+
+    Returns (title, data, errors). `other_names` holds the casefolded names of
+    the other medications in the same hub.
+    """
+    errors: dict[str, str] = {}
+
+    name = str(user_input.get(CONF_NAME, "")).strip()
+    if not name:
+        errors[CONF_NAME] = "name_required"
+    elif name.casefold() in other_names:
+        errors[CONF_NAME] = "name_exists"
+
+    if float(user_input.get(CONF_DOSE_AMOUNT, 0)) <= 0:
+        errors[CONF_DOSE_AMOUNT] = "invalid_dose"
+
+    if not str(user_input.get(CONF_UNIT, "")).strip():
+        errors[CONF_UNIT] = "unit_required"
+
+    raw_times = user_input.get(CONF_TIMES) or []
+    times = [parse_time(str(value)) for value in raw_times]
+    if not times:
+        errors[CONF_TIMES] = "no_times"
+    elif None in times:
+        errors[CONF_TIMES] = "invalid_time"
+    elif len(set(times)) != len(times):
+        errors[CONF_TIMES] = "duplicate_time"
+
+    days = [day for day in WEEKDAYS if day in (user_input.get(CONF_DAYS) or [])]
+    if not days:
+        errors[CONF_DAYS] = "no_days"
+
+    refill = user_input.get(CONF_REFILL_AMOUNT)
+    if refill is not None and float(refill) <= 0:
+        errors[CONF_REFILL_AMOUNT] = "invalid_refill"
+
+    data: dict[str, Any] = {
+        CONF_DOSE_AMOUNT: float(user_input.get(CONF_DOSE_AMOUNT, 0)),
+        CONF_UNIT: str(user_input.get(CONF_UNIT, "")).strip(),
+        CONF_TIMES: sorted(t for t in times if t is not None),
+        CONF_DAYS: days,
+        CONF_CURRENT_STOCK: float(user_input.get(CONF_CURRENT_STOCK, 0)),
+        CONF_LOW_STOCK_THRESHOLD: float(user_input.get(CONF_LOW_STOCK_THRESHOLD, 0)),
+        CONF_CRITICAL_MODE: user_input.get(CONF_CRITICAL_MODE, CriticalMode.NEVER),
+        CONF_ACTIVE: bool(user_input.get(CONF_ACTIVE, True)),
+    }
+    if instructions := str(user_input.get(CONF_INSTRUCTIONS) or "").strip():
+        data[CONF_INSTRUCTIONS] = instructions
+    if refill is not None:
+        data[CONF_REFILL_AMOUNT] = float(refill)
+    # Overrides are entered in a collapsible section but stored flat.
+    for key, value in (user_input.get(SECTION_OVERRIDES) or {}).items():
+        if value is not None:
+            data[key] = int(value)
+
+    return name, data, errors
+
+
+def medication_form_values(subentry: ConfigSubentry) -> dict[str, Any]:
+    """Turn stored subentry data back into form values (for reconfigure)."""
+    values = dict(subentry.data)
+    values[CONF_NAME] = subentry.title
+    values[SECTION_OVERRIDES] = {
+        key: values.pop(key) for key in OVERRIDE_KEYS if key in values
+    }
+    return values
+
+
+class MedicationSubentryFlow(ConfigSubentryFlow):
+    """Add or reconfigure a medication."""
+
+    async def async_step_user(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        """Add a medication."""
+        return await self._async_medication_form("user", user_input, None)
+
+    async def async_step_reconfigure(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        """Change an existing medication."""
+        return await self._async_medication_form(
+            "reconfigure", user_input, self._get_reconfigure_subentry()
+        )
+
+    async def _async_medication_form(
+        self,
+        step_id: str,
+        user_input: dict[str, Any] | None,
+        subentry: ConfigSubentry | None,
+    ) -> SubentryFlowResult:
+        """Show and handle the medication form for add and reconfigure."""
+        entry = self._get_entry()
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            other_names = {
+                other.title.casefold()
+                for other in entry.subentries.values()
+                if other.subentry_type == SUBENTRY_MEDICATION
+                and (subentry is None or other.subentry_id != subentry.subentry_id)
+            }
+            title, data, errors = validate_medication(user_input, other_names)
+            if not errors:
+                if subentry is None:
+                    return self.async_create_entry(title=title, data=data)
+                # The entry's update listener reloads MedTrack, so use the
+                # non-reloading variant (the reloading one raises with listeners).
+                return self.async_update_and_abort(
+                    entry, subentry, title=title, data=data
+                )
+
+        suggested = (
+            user_input
+            if user_input is not None
+            else (medication_form_values(subentry) if subentry else None)
+        )
+        return self.async_show_form(
+            step_id=step_id,
+            data_schema=self.add_suggested_values_to_schema(
+                medication_schema(), suggested
+            ),
+            errors=errors,
+        )

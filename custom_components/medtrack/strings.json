@@ -1,0 +1,235 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Set up MedTrack",
+        "description": "Global reminder settings. Medications are added afterwards from the integration page.",
+        "data": {
+          "name": "Name",
+          "notify_targets": "Phones to notify",
+          "reremind_interval": "Re-remind interval",
+          "max_reminders": "Max reminders",
+          "max_snoozes": "Max snoozes per dose",
+          "snooze_length": "Snooze length",
+          "early_take_window": "Early-take window",
+          "interruption_level": "Interruption level",
+          "require_unlock": "Require unlock for \"Taken\"",
+          "critical_volume": "Critical alert volume",
+          "history_retention": "History retention"
+        },
+        "data_description": {
+          "notify_targets": "Companion App notify services. Every reminder goes to all selected phones.",
+          "reremind_interval": "Minutes between repeated reminders while a dose is unconfirmed.",
+          "max_reminders": "Total reminders per dose, including the first. After the last one the dose is marked missed.",
+          "snooze_length": "Minutes the Snooze button delays the next reminder.",
+          "early_take_window": "How many minutes before the scheduled time a dose may already be confirmed.",
+          "interruption_level": "How normal reminders break through Focus modes on iOS.",
+          "require_unlock": "The phone must be unlocked before \"Taken\" is accepted.",
+          "critical_volume": "Volume (0.1 to 1.0) of critical alerts, which sound even when the phone is muted.",
+          "history_retention": "Days to keep dose history. 0 keeps it forever."
+        }
+      }
+    },
+    "error": {
+      "no_targets": "Select at least one phone."
+    },
+    "abort": {
+      "no_notify_targets": "No Companion App phones found. Install the Home Assistant app on your iPhone, sign in and allow notifications, then try again."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "MedTrack settings",
+        "data": {
+          "notify_targets": "Phones to notify",
+          "reremind_interval": "Re-remind interval",
+          "max_reminders": "Max reminders",
+          "max_snoozes": "Max snoozes per dose",
+          "snooze_length": "Snooze length",
+          "early_take_window": "Early-take window",
+          "interruption_level": "Interruption level",
+          "require_unlock": "Require unlock for \"Taken\"",
+          "critical_volume": "Critical alert volume",
+          "history_retention": "History retention"
+        },
+        "data_description": {
+          "notify_targets": "Companion App notify services. Every reminder goes to all selected phones.",
+          "reremind_interval": "Minutes between repeated reminders while a dose is unconfirmed.",
+          "max_reminders": "Total reminders per dose, including the first. After the last one the dose is marked missed.",
+          "snooze_length": "Minutes the Snooze button delays the next reminder.",
+          "early_take_window": "How many minutes before the scheduled time a dose may already be confirmed.",
+          "interruption_level": "How normal reminders break through Focus modes on iOS.",
+          "require_unlock": "The phone must be unlocked before \"Taken\" is accepted.",
+          "critical_volume": "Volume (0.1 to 1.0) of critical alerts, which sound even when the phone is muted.",
+          "history_retention": "Days to keep dose history. 0 keeps it forever."
+        }
+      }
+    },
+    "error": {
+      "no_targets": "Select at least one phone."
+    }
+  },
+  "config_subentries": {
+    "medication": {
+      "entry_type": "Medication",
+      "initiate_flow": {
+        "user": "Add medication",
+        "reconfigure": "Edit medication"
+      },
+      "step": {
+        "user": {
+          "title": "Add medication",
+          "data": {
+            "name": "Name",
+            "dose_amount": "Dose amount",
+            "unit": "Unit",
+            "times": "Times",
+            "days": "Days",
+            "instructions": "Instructions",
+            "current_stock": "Current stock",
+            "low_stock_threshold": "Low-stock threshold",
+            "refill_amount": "Default refill amount",
+            "critical_mode": "Critical alerts",
+            "active": "Active"
+          },
+          "data_description": {
+            "dose_amount": "Amount per dose, for example 2.",
+            "unit": "For example tablet, capsule or ml. Also used for the stock.",
+            "times": "Local times of day for each dose.",
+            "instructions": "Optional, for example \"with food\". Shown in the reminder.",
+            "current_stock": "How much you have now, in the unit above.",
+            "low_stock_threshold": "Alert when stock is at or below this amount.",
+            "refill_amount": "Optional. Used by the \"Refilled\" action.",
+            "critical_mode": "Critical alerts sound even when the phone is muted or in a Focus mode.",
+            "active": "Paused medications send no reminders."
+          },
+          "sections": {
+            "overrides": {
+              "name": "Reminder overrides",
+              "description": "Leave empty to use the MedTrack settings.",
+              "data": {
+                "reremind_interval": "Re-remind interval",
+                "max_reminders": "Max reminders"
+              }
+            }
+          }
+        },
+        "reconfigure": {
+          "title": "Edit medication",
+          "data": {
+            "name": "Name",
+            "dose_amount": "Dose amount",
+            "unit": "Unit",
+            "times": "Times",
+            "days": "Days",
+            "instructions": "Instructions",
+            "current_stock": "Current stock",
+            "low_stock_threshold": "Low-stock threshold",
+            "refill_amount": "Default refill amount",
+            "critical_mode": "Critical alerts",
+            "active": "Active"
+          },
+          "data_description": {
+            "dose_amount": "Amount per dose, for example 2.",
+            "unit": "For example tablet, capsule or ml. Also used for the stock.",
+            "times": "Local times of day for each dose.",
+            "instructions": "Optional, for example \"with food\". Shown in the reminder.",
+            "current_stock": "How much you have now, in the unit above.",
+            "low_stock_threshold": "Alert when stock is at or below this amount.",
+            "refill_amount": "Optional. Used by the \"Refilled\" action.",
+            "critical_mode": "Critical alerts sound even when the phone is muted or in a Focus mode.",
+            "active": "Paused medications send no reminders."
+          },
+          "sections": {
+            "overrides": {
+              "name": "Reminder overrides",
+              "description": "Leave empty to use the MedTrack settings.",
+              "data": {
+                "reremind_interval": "Re-remind interval",
+                "max_reminders": "Max reminders"
+              }
+            }
+          }
+        }
+      },
+      "error": {
+        "name_required": "Enter a name.",
+        "name_exists": "A medication with this name already exists.",
+        "invalid_dose": "The dose amount must be greater than 0.",
+        "unit_required": "Enter a unit.",
+        "no_times": "Add at least one time.",
+        "invalid_time": "One of the times is not a valid HH:MM time.",
+        "duplicate_time": "Each time may only appear once.",
+        "no_days": "Select at least one day.",
+        "invalid_refill": "The refill amount must be greater than 0."
+      }
+    }
+  },
+  "selector": {
+    "interruption_level": {
+      "options": {
+        "active": "Active (normal)",
+        "time-sensitive": "Time sensitive (breaks through Focus)"
+      }
+    },
+    "critical_mode": {
+      "options": {
+        "never": "Never",
+        "final_reminder": "Final reminder only",
+        "all_reminders": "All reminders"
+      }
+    },
+    "weekday": {
+      "options": {
+        "mon": "Monday",
+        "tue": "Tuesday",
+        "wed": "Wednesday",
+        "thu": "Thursday",
+        "fri": "Friday",
+        "sat": "Saturday",
+        "sun": "Sunday"
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "stock": { "name": "Stock" },
+      "days_remaining": { "name": "Days remaining" },
+      "next_dose": { "name": "Next dose" },
+      "status": {
+        "name": "Status",
+        "state": {
+          "idle": "Idle",
+          "pending": "Pending",
+          "snoozed": "Snoozed",
+          "taken": "Taken",
+          "taken_late": "Taken late",
+          "skipped": "Skipped",
+          "missed": "Missed"
+        },
+        "state_attributes": {
+          "dose_id": { "name": "Dose ID" },
+          "reminders_sent": { "name": "Reminders sent" },
+          "snoozes_used": { "name": "Snoozes used" }
+        }
+      },
+      "taken_today": {
+        "name": "Taken today",
+        "state_attributes": {
+          "due_today": { "name": "Due today" }
+        }
+      },
+      "doses_due_today": { "name": "Doses due today" },
+      "doses_taken_today": { "name": "Doses taken today" }
+    },
+    "binary_sensor": {
+      "low_stock": { "name": "Low stock" }
+    },
+    "button": {
+      "take": { "name": "Take" },
+      "skip": { "name": "Skip" },
+      "snooze": { "name": "Snooze" }
+    }
+  }
+}
