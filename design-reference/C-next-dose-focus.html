@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Next dose focus</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&amp;family=Inter:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#0E2433}a:hover{color:#23506F}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; box-sizing: border-box; background: #F2F4F7; font-family: Inter, system-ui, sans-serif; color: #0E2433; padding: 52px 16px 24px; display: flex; flex-direction: column; gap: 16px; overflow: hidden">
+
+<div style="display: flex; justify-content: space-between; align-items: center; padding: 0 4px">
+<span style="font-family: 'Space Grotesk', sans-serif; font-size: 18px; font-weight: 700">Meds</span>
+<span style="font-size: 13px; color: #4A5B6B">Wed 4 Nov · 3 of 5 taken</span>
+</div>
+
+<div style="background: #0E2433; color: #FFFFFF; border-radius: 28px; padding: 24px 22px 22px; display: flex; flex-direction: column; gap: 18px">
+<div style="display: flex; justify-content: space-between; align-items: center">
+<span style="font-size: 13px; font-weight: 600; letter-spacing: 0.06em; color: #B9C8D6">NEXT DOSE</span>
+<span style="font-size: 12px; font-weight: 600; color: #0E2433; background: {{accent}}; border-radius: 999px; padding: 5px 10px">Due now</span>
+</div>
+<div style="display: flex; flex-direction: column; gap: 6px">
+<span style="font-family: 'Space Grotesk', sans-serif; font-size: 72px; font-weight: 700; line-height: 0.95; letter-spacing: -0.03em">13:00</span>
+<span style="font-family: 'Space Grotesk', sans-serif; font-size: 26px; font-weight: 600">Magnesium</span>
+<span style="font-size: 15px; color: #B9C8D6">1 tablet · with food</span>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 8px">
+<div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px">
+<div style="height: 6px; border-radius: 3px; background: {{accent}}"></div>
+<div style="height: 6px; border-radius: 3px; background: {{accent}}"></div>
+<div style="height: 6px; border-radius: 3px; background: #2C4559"></div>
+<div style="height: 6px; border-radius: 3px; background: #2C4559"></div>
+</div>
+<span style="font-size: 13px; color: #B9C8D6">Reminder 2 of 4 · next in 8 min · sent to 2 phones</span>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 10px">
+<button type="button" style="height: 60px; border: none; border-radius: 18px; background: {{accent}}; color: #0E2433; font-family: 'Space Grotesk', sans-serif; font-size: 20px; font-weight: 700">Taken</button>
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px">
+<button type="button" style="height: 48px; border: 1px solid #3B566C; border-radius: 14px; background: transparent; color: #FFFFFF; font-family: inherit; font-size: 15px; font-weight: 500">Snooze 15 min</button>
+<button type="button" style="height: 48px; border: 1px solid #3B566C; border-radius: 14px; background: transparent; color: #FFFFFF; font-family: inherit; font-size: 15px; font-weight: 500">Skip dose</button>
+</div>
+</div>
+</div>
+
+<div style="background: #FFFFFF; border-radius: 22px; padding: 16px 18px; display: flex; flex-direction: column; gap: 12px">
+<span style="font-size: 13px; font-weight: 600; color: #4A5B6B">THIS WEEK</span>
+<div style="display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px">
+<div style="display: flex; flex-direction: column; align-items: center; gap: 6px"><div style="width: 26px; height: 26px; border-radius: 13px; background: #0E2433"></div><span style="font-size: 12px; color: #4A5B6B">T</span></div>
+<div style="display: flex; flex-direction: column; align-items: center; gap: 6px"><div style="width: 26px; height: 26px; border-radius: 13px; background: #0E2433"></div><span style="font-size: 12px; color: #4A5B6B">F</span></div>
+<div style="display: flex; flex-direction: column; align-items: center; gap: 6px"><div style="width: 26px; height: 26px; border-radius: 13px; border: 3px solid #C2410C; box-sizing: border-box"></div><span style="font-size: 12px; color: #4A5B6B">S</span></div>
+<div style="display: flex; flex-direction: column; align-items: center; gap: 6px"><div style="width: 26px; height: 26px; border-radius: 13px; background: #0E2433"></div><span style="font-size: 12px; color: #4A5B6B">S</span></div>
+<div style="display: flex; flex-direction: column; align-items: center; gap: 6px"><div style="width: 26px; height: 26px; border-radius: 13px; background: #0E2433"></div><span style="font-size: 12px; color: #4A5B6B">M</span></div>
+<div style="display: flex; flex-direction: column; align-items: center; gap: 6px"><div style="width: 26px; height: 26px; border-radius: 13px; background: #0E2433"></div><span style="font-size: 12px; color: #4A5B6B">T</span></div>
+<div style="display: flex; flex-direction: column; align-items: center; gap: 6px"><div style="width: 26px; height: 26px; border-radius: 13px; border: 3px solid #0E2433; box-sizing: border-box; background: #DCE4EC"></div><span style="font-size: 12px; font-weight: 700; color: #0E2433">W</span></div>
+</div>
+<span style="font-size: 13px; color: #4A5B6B">Filled = all doses taken · orange ring = a missed dose</span>
+</div>
+
+<div style="background: #FFFFFF; border-radius: 22px; padding: 6px 18px; display: flex; flex-direction: column">
+<div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid #E3E8EE">
+<span style="font-size: 15px; font-weight: 600">Vitamin D</span>
+<span style="font-family: 'Space Grotesk', sans-serif; font-size: 15px; font-weight: 600; color: #4A5B6B">21:00</span>
+</div>
+<div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 0">
+<div style="display: flex; flex-direction: column; gap: 2px"><span style="font-size: 15px; font-weight: 600">Omega-3</span><span style="font-size: 13px; color: #C2410C; font-weight: 500">6 left · refill soon</span></div>
+<span style="font-family: 'Space Grotesk', sans-serif; font-size: 15px; font-weight: 600; color: #4A5B6B">08:00</span>
+</div>
+</div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#F5C542","options":["#F5C542","#7EE0C3","#9CC7FF"]},"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { accent: this.props.accent ?? '#F5C542' };
+  }
+}
+</script>
+</body>
+</html>

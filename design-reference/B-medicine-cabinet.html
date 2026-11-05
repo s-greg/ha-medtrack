@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Medicine cabinet</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&amp;family=IBM+Plex+Sans:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#7DBBFF}a:hover{color:#A9D2FF}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; box-sizing: border-box; background: #111418; font-family: 'IBM Plex Sans', system-ui, sans-serif; color: #ECEFF3; padding: 56px 18px 24px; display: flex; flex-direction: column; gap: 18px; overflow: hidden">
+
+<div style="display: flex; justify-content: space-between; align-items: center">
+<h1 style="margin: 0; font-size: 26px; font-weight: 700; letter-spacing: -0.01em">Medicine cabinet</h1>
+<button type="button" aria-label="Add medication" style="width: 44px; height: 44px; border-radius: 22px; border: 1px solid #2E3641; background: #1B2027; display: flex; align-items: center; justify-content: center"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ECEFF3" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14"></path><path d="M5 12h14"></path></svg></button>
+</div>
+
+<div style="display: flex; gap: 4px; background: #1B2027; border-radius: 12px; padding: 4px">
+<button type="button" style="flex-grow: 1; height: 36px; border: none; border-radius: 9px; background: transparent; color: #9AA4B2; font-family: inherit; font-size: 14px; font-weight: 500">Today</button>
+<button type="button" style="flex-grow: 1; height: 36px; border: none; border-radius: 9px; background: #2E3641; color: #ECEFF3; font-family: inherit; font-size: 14px; font-weight: 600">Cabinet</button>
+<button type="button" style="flex-grow: 1; height: 36px; border: none; border-radius: 9px; background: transparent; color: #9AA4B2; font-family: inherit; font-size: 14px; font-weight: 500">History</button>
+</div>
+
+<div style="background: #1B2027; border: 1px solid {{warn}}; border-radius: 18px; padding: 16px; display: flex; flex-direction: column; gap: 12px">
+<div style="display: flex; justify-content: space-between; align-items: flex-start">
+<div style="display: flex; flex-direction: column; gap: 3px">
+<span style="font-size: 17px; font-weight: 600">Omega-3</span>
+<span style="font-size: 13px; color: #9AA4B2">2 capsules · 08:00</span>
+</div>
+<span style="font-size: 12px; font-weight: 600; color: #111418; background: {{warn}}; border-radius: 6px; padding: 4px 8px">LOW STOCK</span>
+</div>
+<div style="display: flex; align-items: baseline; gap: 8px">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 34px; font-weight: 600; color: {{warn}}">6</span>
+<span style="font-size: 14px; color: #9AA4B2">left · about 3 days · alert below 10</span>
+</div>
+<div style="height: 8px; border-radius: 4px; background: #2E3641; position: relative">
+<div style="position: absolute; left: 0; top: 0; bottom: 0; width: 10%; border-radius: 4px; background: {{warn}}"></div>
+<div style="position: absolute; left: 16%; top: -3px; bottom: -3px; width: 2px; background: #9AA4B2"></div>
+</div>
+<button type="button" style="height: 44px; border: none; border-radius: 12px; background: #ECEFF3; color: #111418; font-family: inherit; font-size: 15px; font-weight: 600">Log refill</button>
+</div>
+
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px">
+
+<div style="background: #1B2027; border-radius: 18px; padding: 14px; display: flex; flex-direction: column; gap: 10px">
+<span style="font-size: 15px; font-weight: 600">Vitamin D</span>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 26px; font-weight: 600">48</span>
+<div style="height: 6px; border-radius: 3px; background: #2E3641; position: relative"><div style="position: absolute; left: 0; top: 0; bottom: 0; width: 80%; border-radius: 3px; background: {{accent}}"></div></div>
+<span style="font-size: 12px; color: #9AA4B2">24 days · 2× daily</span>
+</div>
+
+<div style="background: #1B2027; border-radius: 18px; padding: 14px; display: flex; flex-direction: column; gap: 10px">
+<span style="font-size: 15px; font-weight: 600">Magnesium</span>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 26px; font-weight: 600">31</span>
+<div style="height: 6px; border-radius: 3px; background: #2E3641; position: relative"><div style="position: absolute; left: 0; top: 0; bottom: 0; width: 52%; border-radius: 3px; background: {{accent}}"></div></div>
+<span style="font-size: 12px; color: #9AA4B2">31 days · 1× daily</span>
+</div>
+
+<div style="background: #1B2027; border-radius: 18px; padding: 14px; display: flex; flex-direction: column; gap: 10px">
+<span style="font-size: 15px; font-weight: 600">Zinc</span>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 26px; font-weight: 600">57</span>
+<div style="height: 6px; border-radius: 3px; background: #2E3641; position: relative"><div style="position: absolute; left: 0; top: 0; bottom: 0; width: 95%; border-radius: 3px; background: {{accent}}"></div></div>
+<span style="font-size: 12px; color: #9AA4B2">57 days · 1× daily</span>
+</div>
+
+<div style="border: 1px dashed #3A4350; border-radius: 18px; padding: 14px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; min-height: 120px">
+<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#9AA4B2" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14"></path><path d="M5 12h14"></path></svg>
+<span style="font-size: 13px; color: #9AA4B2">Add medication</span>
+</div>
+
+</div>
+
+<div style="background: #1B2027; border-radius: 18px; padding: 14px 16px; display: flex; justify-content: space-between; align-items: center">
+<div style="display: flex; flex-direction: column; gap: 3px">
+<span style="font-size: 13px; color: #9AA4B2">Next dose</span>
+<span style="font-size: 15px; font-weight: 600">Magnesium · 13:00</span>
+</div>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 15px; font-weight: 600; color: {{accent}}">in 12 min</span>
+</div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#5AA9FF","options":["#5AA9FF","#4FD1B5","#B79CFF"]},"warn":{"editor":"color","default":"#FF9F43","options":["#FF9F43","#FFC857","#FF7A7A"]},"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { accent: this.props.accent ?? '#5AA9FF', warn: this.props.warn ?? '#FF9F43' };
+  }
+}
+</script>
+</body>
+</html>
