@@ -8,6 +8,7 @@ from typing import Any
 
 from homeassistant.config_entries import (
     ConfigEntry,
+    ConfigEntryState,
     ConfigFlow,
     ConfigFlowResult,
     ConfigSubentry,
@@ -23,6 +24,7 @@ from homeassistant.helpers.selector import (
     NumberSelector,
     NumberSelectorConfig,
     NumberSelectorMode,
+    SelectOptionDict,
     SelectSelector,
     SelectSelectorConfig,
     SelectSelectorMode,
@@ -66,7 +68,6 @@ from .const import (
     DEFAULT_SNOOZE_LENGTH,
     DEFAULT_UNIT,
     DOMAIN,
-    MOBILE_APP_NOTIFY_PREFIX,
     OVERRIDE_KEYS,
     RANGE_CRITICAL_VOLUME,
     RANGE_EARLY_TAKE_WINDOW,
@@ -81,6 +82,7 @@ from .const import (
     CriticalMode,
     InterruptionLevel,
 )
+from .targets import available_notify_targets, notify_target_labels
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -88,13 +90,14 @@ from .const import (
 
 
 @callback
-def available_notify_targets(hass: HomeAssistant) -> list[str]:
-    """Return the Companion App notify services (without the 'notify.' prefix)."""
-    return sorted(
-        name
-        for name in hass.services.async_services_for_domain("notify")
-        if name.startswith(MOBILE_APP_NOTIFY_PREFIX)
-    )
+def _target_options(hass: HomeAssistant, targets: list[str]) -> list[SelectOptionDict]:
+    """Selector options: stored value is the service name, label the phone name."""
+    labels = notify_target_labels(hass)
+    options = [
+        SelectOptionDict(value=target, label=labels.get(target, target))
+        for target in targets
+    ]
+    return sorted(options, key=lambda option: option["label"].casefold())
 
 
 def _int_selector(bounds: tuple[int, int], unit: str | None = None) -> Any:
@@ -117,7 +120,7 @@ def _float_selector(
     return NumberSelector(config)
 
 
-def hub_settings_schema(targets: list[str]) -> probatio.Schema:
+def hub_settings_schema(targets: list[SelectOptionDict]) -> probatio.Schema:
     """Schema for the hub settings shared by the config and options flows."""
     return probatio.Schema(
         {
@@ -214,7 +217,7 @@ class MedTrackConfigFlow(ConfigFlow, domain=DOMAIN):
 
         schema = probatio.Schema(
             {probatio.Required(CONF_NAME, default=DEFAULT_NAME): TextSelector()}
-        ).extend(hub_settings_schema(targets).schema)
+        ).extend(hub_settings_schema(_target_options(self.hass, targets)).schema)
         return self.async_show_form(
             step_id="user",
             data_schema=self.add_suggested_values_to_schema(schema, user_input),
@@ -238,9 +241,12 @@ class MedTrackOptionsFlow(OptionsFlow):
         current = self.config_entry.options
         # Keep already configured targets selectable even if the phone is
         # currently missing, so the form does not reject the saved value.
-        targets = sorted(
-            set(available_notify_targets(self.hass))
-            | set(current.get(CONF_NOTIFY_TARGETS, []))
+        targets = _target_options(
+            self.hass,
+            sorted(
+                set(available_notify_targets(self.hass))
+                | set(current.get(CONF_NOTIFY_TARGETS, []))
+            ),
         )
         return self.async_show_form(
             step_id="init",
@@ -275,8 +281,10 @@ def medication_schema() -> probatio.Schema:
                 )
             ),
             probatio.Optional(CONF_INSTRUCTIONS): TextSelector(),
-            probatio.Required(CONF_CURRENT_STOCK, default=0): _float_selector(),
-            probatio.Required(CONF_LOW_STOCK_THRESHOLD, default=0): _float_selector(),
+            # Both optional: no stock = no stock tracking for this medication,
+            # no threshold = track stock but never alert.
+            probatio.Optional(CONF_CURRENT_STOCK): _float_selector(),
+            probatio.Optional(CONF_LOW_STOCK_THRESHOLD): _float_selector(),
             probatio.Optional(CONF_REFILL_AMOUNT): _float_selector(),
             probatio.Required(
                 CONF_CRITICAL_MODE, default=CriticalMode.NEVER.value
@@ -357,8 +365,6 @@ def validate_medication(
         CONF_UNIT: str(user_input.get(CONF_UNIT, "")).strip(),
         CONF_TIMES: sorted(t for t in times if t is not None),
         CONF_DAYS: days,
-        CONF_CURRENT_STOCK: float(user_input.get(CONF_CURRENT_STOCK, 0)),
-        CONF_LOW_STOCK_THRESHOLD: float(user_input.get(CONF_LOW_STOCK_THRESHOLD, 0)),
         CONF_CRITICAL_MODE: user_input.get(CONF_CRITICAL_MODE, CriticalMode.NEVER),
         CONF_ACTIVE: bool(user_input.get(CONF_ACTIVE, True)),
     }
@@ -366,6 +372,9 @@ def validate_medication(
         data[CONF_INSTRUCTIONS] = instructions
     if refill is not None:
         data[CONF_REFILL_AMOUNT] = float(refill)
+    for key in (CONF_CURRENT_STOCK, CONF_LOW_STOCK_THRESHOLD):
+        if user_input.get(key) is not None:
+            data[key] = float(user_input[key])
     # Overrides are entered in a collapsible section but stored flat.
     for key, value in (user_input.get(SECTION_OVERRIDES) or {}).items():
         if value is not None:
@@ -374,10 +383,18 @@ def validate_medication(
     return name, data, errors
 
 
-def medication_form_values(subentry: ConfigSubentry) -> dict[str, Any]:
-    """Turn stored subentry data back into form values (for reconfigure)."""
+def medication_form_values(
+    subentry: ConfigSubentry, live_stock: float | None
+) -> dict[str, Any]:
+    """Turn stored subentry data back into form values (for reconfigure).
+
+    The stock field shows the live stock (after doses taken), not the value
+    typed in when the medication was added. Changing it is a stock correction.
+    """
     values = dict(subentry.data)
     values[CONF_NAME] = subentry.title
+    if live_stock is not None:
+        values[CONF_CURRENT_STOCK] = live_stock
     values[SECTION_OVERRIDES] = {
         key: values.pop(key) for key in OVERRIDE_KEYS if key in values
     }
@@ -431,7 +448,11 @@ class MedicationSubentryFlow(ConfigSubentryFlow):
         suggested = (
             user_input
             if user_input is not None
-            else (medication_form_values(subentry) if subentry else None)
+            else (
+                medication_form_values(subentry, self._live_stock(entry, subentry))
+                if subentry
+                else None
+            )
         )
         return self.async_show_form(
             step_id=step_id,
@@ -440,3 +461,13 @@ class MedicationSubentryFlow(ConfigSubentryFlow):
             ),
             errors=errors,
         )
+
+    @staticmethod
+    def _live_stock(entry: ConfigEntry, subentry: ConfigSubentry) -> float | None:
+        """Current stock from the running MedTrack, if loaded and tracked."""
+        if entry.state is not ConfigEntryState.LOADED:
+            return None
+        manager = entry.runtime_data
+        if subentry.subentry_id not in manager.medications:
+            return None
+        return manager.stock(subentry.subentry_id)

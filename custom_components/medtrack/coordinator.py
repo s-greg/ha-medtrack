@@ -56,8 +56,8 @@ class MedTrackManager:
 
     # --- Values read by entities (placeholders in Phase 1) ---------------------
 
-    def stock(self, subentry_id: str) -> float:
-        """Current stock in the medication's unit."""
+    def stock(self, subentry_id: str) -> float | None:
+        """Current stock in the medication's unit; None when not tracked."""
         return self.medications[subentry_id].initial_stock
 
     def days_remaining(self, subentry_id: str) -> float | None:
@@ -86,8 +86,9 @@ class MedTrackManager:
 
     def low_stock(self, subentry_id: str) -> bool:
         """Whether stock is at or below the threshold."""
-        med = self.medications[subentry_id]
-        return self.stock(subentry_id) <= med.low_stock_threshold
+        threshold = self.medications[subentry_id].low_stock_threshold
+        stock = self.stock(subentry_id)
+        return stock is not None and threshold is not None and stock <= threshold
 
     def hub_doses_due_today(self) -> int:
         """Doses of all medications scheduled today."""

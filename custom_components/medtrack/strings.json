@@ -98,8 +98,8 @@
             "unit": "For example tablet, capsule or ml. Also used for the stock.",
             "times": "Local times of day for each dose.",
             "instructions": "Optional, for example \"with food\". Shown in the reminder.",
-            "current_stock": "How much you have now, in the unit above.",
-            "low_stock_threshold": "Alert when stock is at or below this amount.",
+            "current_stock": "Optional. How much you have now, in the unit above. Leave empty to not track stock for this medication.",
+            "low_stock_threshold": "Optional. Alert when stock is at or below this amount. Leave empty for no low-stock alerts.",
             "refill_amount": "Optional. Used by the \"Refilled\" action.",
             "critical_mode": "Critical alerts sound even when the phone is muted or in a Focus mode.",
             "active": "Paused medications send no reminders."
@@ -135,8 +135,8 @@
             "unit": "For example tablet, capsule or ml. Also used for the stock.",
             "times": "Local times of day for each dose.",
             "instructions": "Optional, for example \"with food\". Shown in the reminder.",
-            "current_stock": "How much you have now, in the unit above.",
-            "low_stock_threshold": "Alert when stock is at or below this amount.",
+            "current_stock": "Current stock, already reduced by the doses you took. Changing it is logged as a stock correction. Empty turns stock tracking off.",
+            "low_stock_threshold": "Optional. Alert when stock is at or below this amount. Leave empty for no low-stock alerts.",
             "refill_amount": "Optional. Used by the \"Refilled\" action.",
             "critical_mode": "Critical alerts sound even when the phone is muted or in a Focus mode.",
             "active": "Paused medications send no reminders."
@@ -194,9 +194,15 @@
   },
   "entity": {
     "sensor": {
-      "stock": { "name": "Stock" },
-      "days_remaining": { "name": "Days remaining" },
-      "next_dose": { "name": "Next dose" },
+      "stock": {
+        "name": "Stock"
+      },
+      "days_remaining": {
+        "name": "Days remaining"
+      },
+      "next_dose": {
+        "name": "Next dose"
+      },
       "status": {
         "name": "Status",
         "state": {
@@ -209,27 +215,47 @@
           "missed": "Missed"
         },
         "state_attributes": {
-          "dose_id": { "name": "Dose ID" },
-          "reminders_sent": { "name": "Reminders sent" },
-          "snoozes_used": { "name": "Snoozes used" }
+          "dose_id": {
+            "name": "Dose ID"
+          },
+          "reminders_sent": {
+            "name": "Reminders sent"
+          },
+          "snoozes_used": {
+            "name": "Snoozes used"
+          }
         }
       },
       "taken_today": {
         "name": "Taken today",
         "state_attributes": {
-          "due_today": { "name": "Due today" }
+          "due_today": {
+            "name": "Due today"
+          }
         }
       },
-      "doses_due_today": { "name": "Doses due today" },
-      "doses_taken_today": { "name": "Doses taken today" }
+      "doses_due_today": {
+        "name": "Doses due today"
+      },
+      "doses_taken_today": {
+        "name": "Doses taken today"
+      }
     },
     "binary_sensor": {
-      "low_stock": { "name": "Low stock" }
+      "low_stock": {
+        "name": "Low stock"
+      }
     },
     "button": {
-      "take": { "name": "Take" },
-      "skip": { "name": "Skip" },
-      "snooze": { "name": "Snooze" }
+      "take": {
+        "name": "Take"
+      },
+      "skip": {
+        "name": "Skip"
+      },
+      "snooze": {
+        "name": "Snooze"
+      }
     }
   }
 }

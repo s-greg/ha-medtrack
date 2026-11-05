@@ -59,6 +59,7 @@ These were checked against the Companion App docs (companion.home-assistant.io) 
 | Early-take window | minutes (0–180) | 60 | How early a dose may be confirmed before its time |
 | Interruption level | select | time-sensitive | `active` / `time-sensitive` for normal reminders |
 | Require unlock for "Taken" | bool | false | Sets `authenticationRequired` on the Taken action |
+| Critical alert volume | float (0.1–1.0) | 1.0 | Volume in the critical `sound` block (§6) |
 | History retention | days (0 = forever) | 0 | |
 
 ### 4.2 Medication (subentry flow + reconfigure)
@@ -71,8 +72,8 @@ These were checked against the Companion App docs (companion.home-assistant.io) 
 | Times | list of HH:MM, ≥1 | Local time (HA's configured time zone) |
 | Days | multi-select Mon–Sun | Default all |
 | Instructions | text, optional | e.g. "with food"; shown in the notification body |
-| Current stock | float ≥ 0 | |
-| Low-stock threshold | float ≥ 0 | Alert when stock ≤ threshold |
+| Current stock | float ≥ 0, optional | Empty = stock tracking off for this medication (no decrement, no low-stock alerts, no Stock / Days remaining / Low stock entities). Filling it in later turns tracking on. In reconfigure the field shows the live stock; changing it is a logged stock correction (same as `set_stock`), not a reset |
+| Low-stock threshold | float ≥ 0, optional | Alert when stock ≤ threshold. Empty = track stock but never alert |
 | Default refill amount | float, optional | Pre-fills the refill action |
 | Critical mode | select | `never` / `final_reminder` / `all_reminders` |
 | Overrides | optional | Re-remind interval, max reminders (fall back to hub values) |
@@ -125,6 +126,8 @@ data:
 ```
 
 - Use `interruption-level: critical` when the medication's critical mode says so (final reminder, or all reminders). Otherwise use the hub's interruption level.
+- Critical sends only also include `push.sound: {name: default, critical: 1, volume: <critical alert volume>}`.
+- The phone list in the hub flows shows each phone's name (from its mobile_app entry); the stored value is the notify service name.
 - Optional `icon: "sfsymbols:..."` on actions (iOS 15+); keep it optional.
 - Parse actions by prefix `MEDTRACK_`, then verb, then dose ID. Prefer `action_data.dose_id` when present, fall back to parsing the identifier.
 - Send to all targets concurrently. If one target fails, log a warning and continue with the others; never let a notify error break the scheduler.
@@ -134,6 +137,7 @@ data:
 
 ## 7. Inventory
 
+- Applies only to medications with stock tracking on (current stock filled in, §4.2). Low-stock alerts additionally need a threshold.
 - Stock is a float in the medication's unit. Taken / taken late subtracts the dose amount; never goes below 0 (clamp and log a warning).
 - Days remaining = stock ÷ average daily use, where average daily use = dose × len(times) × (active days ÷ 7). Unknown (None) if usage is 0.
 - Undo restores stock (see actions).
@@ -144,12 +148,12 @@ data:
 
 | Platform | Key | Details |
 |---|---|---|
-| sensor | `stock` | Numeric, `state_class: measurement`, unit = medication unit (gives long-term statistics) |
-| sensor | `days_remaining` | Numeric, unit days |
+| sensor | `stock` | Numeric, `state_class: measurement`, unit = medication unit (gives long-term statistics). Displayed as a whole number unless the dose amount has decimals. Only with stock tracking |
+| sensor | `days_remaining` | Numeric, unit days. Only with stock tracking |
 | sensor | `next_dose` | `device_class: timestamp` |
 | sensor | `status` | `device_class: enum`: `idle`, `pending`, `snoozed`, `taken`, `taken_late`, `skipped`, `missed` (state of the most recent dose). Attributes: current dose ID, reminders sent, snoozes used |
 | sensor | `taken_today` | Numeric count of doses taken today; attribute `due_today` |
-| binary_sensor | `low_stock` | `device_class: problem` |
+| binary_sensor | `low_stock` | `device_class: problem`. Only with stock tracking; always off without a threshold |
 | button | `take` | Confirms the pending dose, or an upcoming one within the early-take window; otherwise does nothing and logs at info level |
 | button | `skip` | Skips the pending dose |
 | button | `snooze` | Snoozes the pending dose |
@@ -172,7 +176,7 @@ All target a medication via `device_id` or `entity_id` of one of its entities.
 
 ## 10. History (Store)
 
-Record: `{id, type: dose|refill|stock_set|undo, medication_id, dose_id?, scheduled_at?, state?, at, user_id?, amount?, source: notification|button|service|system}`.
+Record: `{id, type: dose|refill|stock_set|undo, medication_id, dose_id?, scheduled_at?, state?, at, user_id?, amount?, source: notification|button|service|system|config}`. `config` marks a stock correction made in the medication form.
 
 - Persist the in-flight state of all pending doses so a restart resumes them.
 - **Startup recovery:** for doses whose time passed while HA was down, resume if still inside the reminder window (send the next reminder immediately), otherwise mark `missed` with `source: system`.

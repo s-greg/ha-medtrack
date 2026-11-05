@@ -27,9 +27,11 @@ async def async_setup_entry(
     entry: MedTrackConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
-    """Create the low-stock sensor for every medication."""
+    """Create the low-stock sensor for every medication that tracks stock."""
     manager = entry.runtime_data
-    for subentry_id in manager.medications:
+    for subentry_id, medication in manager.medications.items():
+        if not medication.tracks_stock:
+            continue
         async_add_entities(
             [LowStockSensor(manager, subentry_id, LOW_STOCK)],
             config_subentry_id=subentry_id,
