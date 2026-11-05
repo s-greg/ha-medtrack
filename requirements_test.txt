@@ -1,0 +1,4 @@
+# Development/test dependencies (installed inside WSL, never on HA itself).
+# pytest-homeassistant-custom-component pins the matching homeassistant version.
+pytest-homeassistant-custom-component==0.13.375  # -> homeassistant==2026.10.4
+ruff
