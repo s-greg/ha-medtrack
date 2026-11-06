@@ -4,9 +4,9 @@
 
 First release.
 
-- Medication reminders on iPhone through the Home Assistant Companion App,
-  with Taken, Snooze and Skip buttons, sent to all selected phones and
-  cleared everywhere once answered.
+- Medication reminders on iPhone and iPad (iOS / iPadOS) through the Home
+  Assistant Companion App, with Taken, Snooze and Skip buttons, sent to all
+  selected devices and cleared everywhere once answered.
 - Repeating reminders, then "missed" with a "Taken late" option; optional
   critical alerts; early take and early skip before the dose time.
 - Stock tracking with days remaining, a once-per-crossing low-stock alert

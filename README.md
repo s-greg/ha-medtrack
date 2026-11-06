@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="custom_components/medtrack/brand/icon.png" alt="MedTrack icon" width="128">
+</p>
+
 # MedTrack
 
 Medication reminders and stock tracking for Home Assistant, with actionable
