@@ -56,6 +56,7 @@ from .notifications import (
     Notifier,
     dose_tag,
     format_amount,
+    format_quantity,
     low_stock_payload,
     low_stock_tag,
     missed_payload,
@@ -1413,13 +1414,17 @@ class MedTrackManager:
             undo = None
             if (index := self._undo_candidate(sid, now)) is not None:
                 record = self.history[index]
+                change = self._undo_stock_change(sid, index)
                 undo = {
                     "record_id": record["id"],
                     "type": record["type"],
                     "label": self.last_action(sid),
                     "at": _local_iso(datetime.fromisoformat(record["at"])),
                     "dose_id": record.get("dose_id"),
-                    "stock_change": self._undo_stock_change(sid, index),
+                    "stock_change": change,
+                    "stock_change_text": None
+                    if change is None
+                    else format_quantity(abs(change), med.unit),
                 }
                 undo_ids[record["id"]] = undo
                 refresh.append(datetime.fromisoformat(record["at"]) + UNDO_WINDOW)
@@ -1435,6 +1440,9 @@ class MedTrackManager:
                     "instructions": med.instructions,
                     "tracks_stock": med.tracks_stock,
                     "stock": self.stock(sid),
+                    "stock_text": None
+                    if (stock := self.stock(sid)) is None
+                    else format_quantity(stock, med.unit),
                     "low_stock_threshold": med.low_stock_threshold,
                     "low_stock": self.low_stock(sid),
                     "days_remaining": self.days_remaining(sid),
@@ -1472,6 +1480,7 @@ class MedTrackManager:
                     "scheduled_at": _local_iso(dose.scheduled_at),
                     "dose_amount": med.dose_amount,
                     "unit": med.unit,
+                    "quantity": format_quantity(med.dose_amount, med.unit),
                     "instructions": med.instructions,
                     "state": dose.state.value,
                     "taken_at": _local_iso(dose.resolved_at)
@@ -1484,6 +1493,9 @@ class MedTrackManager:
                     "snoozes_left": self._snoozes_left(dose),
                     "next_reminder_at": _local_iso(dose.next_action_at)
                     if dose.is_active
+                    else None,
+                    "early_from": _local_iso(dose.scheduled_at - window)
+                    if dose.state == DoseState.SCHEDULED
                     else None,
                     "can_take": self._can_take(dose, now),
                     "can_skip": self._can_skip(dose, now),
@@ -1501,6 +1513,10 @@ class MedTrackManager:
                 "medication": self.medications[record["medication_id"]].name,
                 "at": _local_iso(at),
                 "amount": record["amount"],
+                "quantity": format_quantity(
+                    record["amount"],
+                    self.medications[record["medication_id"]].unit,
+                ),
                 "can_undo": record["id"] in undo_ids,
             }
             for record in self.history

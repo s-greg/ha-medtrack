@@ -1,6 +1,7 @@
 {
   "domain": "medtrack",
   "name": "MedTrack",
+  "after_dependencies": ["frontend", "http"],
   "categories": ["health_wellbeing"],
   "codeowners": ["@s-greg"],
   "config_flow": true,

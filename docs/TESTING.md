@@ -31,3 +31,15 @@ Assistant first. Use a test medication with times a few minutes ahead.
 - [ ] Tap "Taken" away from home with VPN off, then on: understand what happens in both cases
 - [ ] `medtrack.get_history` in Developer tools → Actions returns your recent actions
 - [ ] Download diagnostics: no phone names or user IDs in the file
+
+## Dashboard card (MedTrack Today)
+- [ ] "MedTrack Today" appears in the card picker; the editor lets you choose the hub and shows the card version
+- [ ] Ring shows "taken / total"; a low-stock banner appears at or below the threshold
+- [ ] Banner → refill dialog pre-filled with the default amount; changing it and Refill adds that amount
+- [ ] Running dose: "reminder n of max", Taken / Snooze / Skip; Snooze disappears when no snoozes are left
+- [ ] Upcoming dose: tap shows "Take early" / "Skip" inside the early-take window, otherwise when that window opens
+- [ ] Missed dose: "Taken late" button
+- [ ] Undo only on the latest taken / skipped / refilled item; the confirmation names the action and the stock change
+- [ ] An action that is not possible shows a message at the bottom of the screen
+- [ ] Acting from a notification or the device page updates the card within a second or two
+- [ ] Light and dark theme both readable; works on the iPhone without sideways scrolling

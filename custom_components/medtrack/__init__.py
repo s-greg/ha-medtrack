@@ -7,6 +7,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import config_validation as cv, device_registry as dr
 from homeassistant.helpers.typing import ConfigType
 
+from .card import async_register_card
 from .const import DOMAIN
 from .coordinator import MedTrackConfigEntry, MedTrackManager
 from .entity import hub_device_info
@@ -25,8 +26,9 @@ CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
-    """Register the MedTrack actions once, for all hubs."""
+    """Register the MedTrack actions and the dashboard card once, for all hubs."""
     async_setup_services(hass)
+    await async_register_card(hass)
     return True
 
 

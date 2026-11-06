@@ -79,6 +79,7 @@ async def test_day_before_first_dose(
             "instructions": "with food",
             "tracks_stock": True,
             "stock": 30.0,
+            "stock_text": "30 tablets",
             "low_stock_threshold": 10.0,
             "low_stock": False,
             "days_remaining": 7.5,
@@ -95,6 +96,7 @@ async def test_day_before_first_dose(
         "scheduled_at": "2026-11-05T08:00:00+01:00",
         "dose_amount": 2.0,
         "unit": "tablet",
+        "quantity": "2 tablets",
         "instructions": "with food",
         "state": "scheduled",
         "taken_at": None,
@@ -104,6 +106,7 @@ async def test_day_before_first_dose(
         "snoozes_used": 0,
         "snoozes_left": 3,
         "next_reminder_at": None,
+        "early_from": "2026-11-05T07:00:00+01:00",
         "can_take": False,
         "can_skip": False,
         "can_snooze": False,
@@ -201,6 +204,7 @@ async def test_day_undo_only_on_what_undo_reverts(
     assert undo["dose_id"] == taken["dose_id"]
     assert undo["at"] == "2026-11-05T08:05:00+01:00"
     assert undo["stock_change"] == 2.0
+    assert undo["stock_change_text"] == "2 tablets"
     # Next change on its own: the 20:00 dose's early window at 19:00.
     assert day["refresh_at"] == "2026-11-05T19:00:00+01:00"
 
@@ -210,6 +214,7 @@ async def test_day_undo_only_on_what_undo_reverts(
     assert not _dose(day, "08:00")["can_undo"]
     [refill] = day["refills"]
     assert refill["amount"] == 10.0
+    assert refill["quantity"] == "10 tablets"
     assert refill["medication"] == "Metformin"
     assert refill["at"] == "2026-11-05T08:05:00+01:00"
     assert refill["can_undo"]
@@ -370,3 +375,14 @@ async def test_get_day_selects_hub(
         assert err.value.translation_key == key
     day = await _day(hass, config_entry_id=second.entry_id)
     assert day["entry_id"] == second.entry_id
+
+
+async def test_day_early_from_only_for_upcoming(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory, notify_calls: Calls
+) -> None:
+    """early_from tells when Take early becomes possible; gone once running."""
+    await start_hub(hass, freezer)
+    await move_to(hass, freezer, local(2026, 11, 5, 8, 0))
+    day = await _day(hass)
+    assert _dose(day, "08:00")["early_from"] is None
+    assert _dose(day, "20:00")["early_from"] == "2026-11-05T19:00:00+01:00"
