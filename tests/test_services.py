@@ -10,8 +10,9 @@ from freezegun.api import FrozenDateTimeFactory
 from homeassistant.config_entries import ConfigSubentry
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.exceptions import ServiceValidationError
-from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import device_registry as dr, selector
 from homeassistant.util.yaml import load_yaml_dict
+import probatio
 import pytest
 
 from custom_components.medtrack.const import (
@@ -523,3 +524,48 @@ async def test_last_action_taken_late(
     await move_to(hass, freezer, local(2026, 11, 5, 9, 15))
     await medtrack(hass, "take_dose", {"dose_id": f"{sid}_20261105_0800"})
     assert _last_action(hass) == "Taken late 09:15"
+
+
+def _no_device_filter(target: dict) -> dict:
+    """hassfest: "Services do not support device filters on target"."""
+    if "device" in target:
+        raise probatio.Invalid("device filter on target")
+    return target
+
+
+# The service schema hassfest applies to custom integrations (HA 2026.10,
+# script/hassfest/services.py), built from Home Assistant's own selectors.
+_FIELD = probatio.Schema(
+    {
+        probatio.Optional("example"): object,
+        probatio.Optional("default"): object,
+        probatio.Optional("required"): bool,
+        probatio.Optional("advanced"): bool,
+        probatio.Optional("selector"): selector.validate_selector,
+        probatio.Optional("name"): str,
+        probatio.Optional("description"): str,
+    }
+)
+_SERVICE = probatio.Schema(
+    {
+        probatio.Required("target"): probatio.All(
+            selector.TargetSelector.CONFIG_SCHEMA, _no_device_filter
+        ),
+        probatio.Optional("fields"): probatio.Schema({str: _FIELD}),
+        probatio.Optional("name"): str,
+        probatio.Optional("description"): str,
+    }
+)
+
+
+def test_services_yaml_passes_hassfest_rules() -> None:
+    """Catch what hassfest rejects (e.g. device filters on targets) locally."""
+    folder = Path(__file__).parents[1] / "custom_components" / DOMAIN
+    services = load_yaml_dict(str(folder / "services.yaml"))
+    for name, service in services.items():
+        try:
+            _SERVICE(service)
+        except probatio.Invalid as err:
+            pytest.fail(f"{name}: {err}")
+    with pytest.raises(probatio.Invalid):
+        _SERVICE({"target": {"device": {"integration": DOMAIN}}})

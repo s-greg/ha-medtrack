@@ -25,7 +25,7 @@ A Home Assistant custom integration (`custom_components/medtrack`) that sends re
 - Never log personal data beyond medication names and dose IDs.
 
 ## Workflow rules
-- Work in the phases defined in `PROMPT.md`. At the end of each phase: run lint and tests, commit with a clear message, summarise what was built and what the owner should test, then STOP and wait for approval.
+- Work in phases agreed with the owner (the original phases 0–4 are done; the dashboard card in `docs/SPEC.md` §14 comes later). At the end of each phase: run lint and tests, commit with a clear message, summarise what was built and what the owner should test, then STOP and wait for approval.
 - Do not modify anything outside this repository. Never connect to or change the owner's live Home Assistant instance yourself; give the owner the steps instead.
 - Do not add third-party Python requirements unless clearly needed; ask first.
 

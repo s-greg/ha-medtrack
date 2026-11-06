@@ -171,6 +171,6 @@ Splitting `schedule.py` / `notify.py` / `models.py` out of the coordinator keeps
 (times, DST, payloads) in small pure functions that can be tested without starting HA.
 
 ## 5. Order of work
-Follows PROMPT.md phases 1–4. Within Phase 2: schedule.py (+ DST tests) → payload builders
+Follows the kickoff prompt's phases 1–4 (PROMPT.md, since removed). Within Phase 2: schedule.py (+ DST tests) → payload builders
 (+ exact-payload tests) → state machine in coordinator → action-event handling → persistence and
 startup recovery → remaining Phase 2 tests.

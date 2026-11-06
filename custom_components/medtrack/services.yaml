@@ -1,7 +1,7 @@
+# Targets use an entity filter only: hassfest rejects device filters on
+# targets. The UI still offers MedTrack devices (those with matching entities).
 take_dose:
   target:
-    device:
-      integration: medtrack
     entity:
       integration: medtrack
   fields:
@@ -12,8 +12,6 @@ take_dose:
 
 skip_dose:
   target:
-    device:
-      integration: medtrack
     entity:
       integration: medtrack
   fields:
@@ -24,8 +22,6 @@ skip_dose:
 
 snooze_dose:
   target:
-    device:
-      integration: medtrack
     entity:
       integration: medtrack
   fields:
@@ -40,8 +36,6 @@ snooze_dose:
 
 refill:
   target:
-    device:
-      integration: medtrack
     entity:
       integration: medtrack
   fields:
@@ -56,8 +50,6 @@ refill:
 
 set_stock:
   target:
-    device:
-      integration: medtrack
     entity:
       integration: medtrack
   fields:
@@ -72,15 +64,11 @@ set_stock:
 
 undo_last:
   target:
-    device:
-      integration: medtrack
     entity:
       integration: medtrack
 
 get_history:
   target:
-    device:
-      integration: medtrack
     entity:
       integration: medtrack
   fields:

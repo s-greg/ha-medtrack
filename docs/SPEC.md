@@ -239,4 +239,4 @@ LICENSE
 
 ## 14. Phase 6 (later): dashboard card
 
-A custom Lovelace card (plain ES module web component, no build step, served from `www/` or bundled via HACS as a separate "Dashboard" repo) using the entities and `medtrack.get_history`. Three visual directions exist in `design-reference/` (static HTML mockups, 390×844 iPhone layout; read for layout, hierarchy and colors, not as runnable code). Which direction to build is decided before Phase 6 starts.
+A custom Lovelace card (plain ES module web component, no build step, served from `www/` or bundled via HACS as a separate "Dashboard" repo) using the entities and `medtrack.get_history`. Three visual directions exist in `docs/design/` (static HTML mockups, 390×844 iPhone layout; read for layout, hierarchy and colors, not as runnable code). Which direction to build is decided before Phase 6 starts.

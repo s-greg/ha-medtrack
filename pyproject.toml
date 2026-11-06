@@ -1,6 +1,6 @@
 [project]
 name = "ha-medtrack"
-version = "0.1.0"
+version = "1.0.0"
 description = "MedTrack: medication reminders and stock tracking for Home Assistant"
 requires-python = ">=3.14"
 
