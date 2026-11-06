@@ -1,0 +1,94 @@
+take_dose:
+  target:
+    device:
+      integration: medtrack
+    entity:
+      integration: medtrack
+  fields:
+    dose_id:
+      required: false
+      selector:
+        text:
+
+skip_dose:
+  target:
+    device:
+      integration: medtrack
+    entity:
+      integration: medtrack
+  fields:
+    dose_id:
+      required: false
+      selector:
+        text:
+
+snooze_dose:
+  target:
+    device:
+      integration: medtrack
+    entity:
+      integration: medtrack
+  fields:
+    minutes:
+      required: false
+      selector:
+        number:
+          min: 5
+          max: 120
+          unit_of_measurement: min
+          mode: box
+
+refill:
+  target:
+    device:
+      integration: medtrack
+    entity:
+      integration: medtrack
+  fields:
+    amount:
+      required: false
+      selector:
+        number:
+          min: 0.001
+          max: 100000
+          step: any
+          mode: box
+
+set_stock:
+  target:
+    device:
+      integration: medtrack
+    entity:
+      integration: medtrack
+  fields:
+    amount:
+      required: true
+      selector:
+        number:
+          min: 0
+          max: 100000
+          step: any
+          mode: box
+
+undo_last:
+  target:
+    device:
+      integration: medtrack
+    entity:
+      integration: medtrack
+
+get_history:
+  target:
+    device:
+      integration: medtrack
+    entity:
+      integration: medtrack
+  fields:
+    start:
+      required: false
+      selector:
+        datetime:
+    end:
+      required: false
+      selector:
+        datetime:

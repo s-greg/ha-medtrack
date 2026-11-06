@@ -106,7 +106,7 @@
             "instructions": "Optional, for example \"with food\". Shown in the reminder.",
             "current_stock": "Optional. How much you have now, in the unit above. Leave empty to not track stock for this medication.",
             "low_stock_threshold": "Optional. Alert when stock is at or below this amount. Leave empty for no low-stock alerts.",
-            "refill_amount": "Optional. Leave empty if you do not want a default. Used by the \"Refilled\" action.",
+            "refill_amount": "Optional. Pre-fills the Refill amount on the medication's page and is used by \"Refilled\" on the low-stock notification. Leave empty for no default.",
             "critical_mode": "Critical alerts sound even when the phone is muted or in a Focus mode.",
             "active": "Paused medications send no reminders. Pausing ends a running dose (recorded as skipped)."
           },
@@ -143,7 +143,7 @@
             "instructions": "Optional, for example \"with food\". Shown in the reminder.",
             "current_stock": "Current stock, already reduced by the doses you took. Changing it is logged as a stock correction. Empty turns stock tracking off.",
             "low_stock_threshold": "Optional. Alert when stock is at or below this amount. Leave empty for no low-stock alerts.",
-            "refill_amount": "Optional. Leave empty if you do not want a default. Used by the \"Refilled\" action.",
+            "refill_amount": "Optional. Pre-fills the Refill amount on the medication's page and is used by \"Refilled\" on the low-stock notification. Leave empty for no default.",
             "critical_mode": "Critical alerts sound even when the phone is muted or in a Focus mode.",
             "active": "Paused medications send no reminders. Pausing ends a running dose (recorded as skipped)."
           },
@@ -261,6 +261,14 @@
       },
       "snooze": {
         "name": "Snooze"
+      },
+      "refill": {
+        "name": "Refill"
+      }
+    },
+    "number": {
+      "refill_amount": {
+        "name": "Refill amount"
       }
     }
   },
@@ -279,13 +287,110 @@
       "message": "{medication}: there is no dose to take right now (nothing running and nothing due within the early-take window)."
     },
     "nothing_to_skip": {
-      "message": "{medication}: there is no running dose to skip."
+      "message": "{medication}: there is no dose to skip right now (nothing running and nothing due within the early-take window)."
     },
     "nothing_to_snooze": {
       "message": "{medication}: there is no running dose to snooze."
     },
     "no_snoozes_left": {
       "message": "{medication}: no snoozes left for this dose."
+    },
+    "stock_not_tracked": {
+      "message": "{medication} does not track stock. Fill in Current stock in the medication's settings first."
+    },
+    "no_refill_amount": {
+      "message": "{medication}: enter a Refill amount first, or set a Default refill amount in the medication's settings."
+    },
+    "nothing_to_undo": {
+      "message": "{medication}: nothing to undo. Only doses taken or skipped and refills from the last 24 hours can be undone."
+    },
+    "not_a_medication": {
+      "message": "Select a MedTrack medication: its device or one of its entities."
+    },
+    "single_medication": {
+      "message": "Select exactly one MedTrack medication (its device or one of its entities)."
+    },
+    "unknown_dose": {
+      "message": "Dose {dose_id} is not known. Only doses from the last 24 hours and the next 48 hours can be used."
+    },
+    "dose_not_in_target": {
+      "message": "Dose {dose_id} does not belong to the selected medication."
+    },
+    "dose_unchanged": {
+      "message": "{medication}: dose {dose_id} is {state}, so nothing changed."
+    },
+    "invalid_period": {
+      "message": "The start must be before the end."
+    }
+  },
+  "services": {
+    "take_dose": {
+      "name": "Take dose",
+      "description": "Confirms the running dose, or the next one within the early-take window, and lowers the stock. Select the medication by its device or one of its entities.",
+      "fields": {
+        "dose_id": {
+          "name": "Dose ID",
+          "description": "Optional. A specific dose, for example from the medtrack_dose_pending event. Leave empty to use the running dose, or the next one within the early-take window."
+        }
+      }
+    },
+    "skip_dose": {
+      "name": "Skip dose",
+      "description": "Skips the running dose, or the next one within the early-take window. Stock does not change. Select the medication by its device or one of its entities.",
+      "fields": {
+        "dose_id": {
+          "name": "Dose ID",
+          "description": "Optional. A specific dose, for example from the medtrack_dose_pending event. Leave empty to use the running dose, or the next one within the early-take window."
+        }
+      }
+    },
+    "snooze_dose": {
+      "name": "Snooze dose",
+      "description": "Delays the next reminder of the running dose. Select the medication by its device or one of its entities.",
+      "fields": {
+        "minutes": {
+          "name": "Minutes",
+          "description": "Optional. Defaults to the snooze length in the MedTrack settings."
+        }
+      }
+    },
+    "refill": {
+      "name": "Refill",
+      "description": "Adds stock and logs a refill. Select the medication by its device or one of its entities.",
+      "fields": {
+        "amount": {
+          "name": "Amount",
+          "description": "Optional. Defaults to the medication's default refill amount."
+        }
+      }
+    },
+    "set_stock": {
+      "name": "Set stock",
+      "description": "Corrects the stock to the amount you counted. Logged as a stock correction. Select the medication by its device or one of its entities.",
+      "fields": {
+        "amount": {
+          "name": "Amount",
+          "description": "The current stock, in the medication's unit."
+        }
+      }
+    },
+    "undo_last": {
+      "name": "Undo last",
+      "description": "Reverts the medication's last taken or skipped dose or refill from the last 24 hours and restores the stock. A reverted dose becomes due again. Select the medication by its device or one of its entities."
+    },
+    "get_history": {
+      "name": "Get history",
+      "description": "Returns the dose, refill and stock history. Select medications, the MedTrack hub, or nothing for all medications.",
+      "fields": {
+        "start": {
+          "name": "Start",
+          "description": "Optional. Only records from this moment on."
+        },
+        "end": {
+          "name": "End",
+          "description": "Optional. Only records up to this moment."
+        }
+      }
     }
   }
 }

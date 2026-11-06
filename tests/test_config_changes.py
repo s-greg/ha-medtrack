@@ -358,7 +358,7 @@ async def test_unit_change_recreates_only_that_medication(
     assert stock.attributes[ATTR_UNIT_OF_MEASUREMENT] == "capsule"
     assert stock.state == "30.0"
     assert hass.states.get("button.metformin_take") is not None
-    assert len(entry.runtime_data._entities[sid]) == 9
+    assert len(entry.runtime_data._entities[sid]) == 11
 
 
 # --- Improvement 6: pausing records the running dose ----------------------------------

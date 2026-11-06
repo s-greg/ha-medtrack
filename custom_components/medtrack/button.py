@@ -1,4 +1,4 @@
-"""Buttons for MedTrack (take / skip / snooze the current dose)."""
+"""Buttons for MedTrack (take / skip / snooze the current dose, refill)."""
 
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ from homeassistant.components.button import ButtonEntity, ButtonEntityDescriptio
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
+from .const import Source
 from .coordinator import MedTrackConfigEntry, MedTrackManager
 from .entity import MedicationEntity
 
@@ -19,7 +20,9 @@ PARALLEL_UPDATES = 0
 class MedTrackButtonDescription(ButtonEntityDescription):
     """Describes a MedTrack button."""
 
-    press_fn: Callable[[MedTrackManager, str, str | None], Awaitable[bool]]
+    press_fn: Callable[[MedTrackManager, str, str | None], Awaitable[object]]
+    # Only created when stock tracking is on for the medication.
+    requires_stock: bool = False
 
 
 BUTTONS: tuple[MedTrackButtonDescription, ...] = (
@@ -38,6 +41,18 @@ BUTTONS: tuple[MedTrackButtonDescription, ...] = (
         translation_key="snooze",
         press_fn=lambda m, sid, uid: m.async_snooze(sid, user_id=uid),
     ),
+    MedTrackButtonDescription(
+        key="refill",
+        translation_key="refill",
+        press_fn=lambda m, sid, uid: m.async_refill(
+            sid,
+            m.refill_input.get(sid),
+            user_id=uid,
+            source=Source.BUTTON,
+            reset_input=True,
+        ),
+        requires_stock=True,
+    ),
 )
 
 
@@ -51,10 +66,12 @@ async def async_setup_entry(
 
     @callback
     def add_medication(subentry_id: str) -> None:
+        medication = manager.medications[subentry_id]
         async_add_entities(
             [
                 MedTrackButton(manager, subentry_id, description)
                 for description in BUTTONS
+                if medication.tracks_stock or not description.requires_stock
             ],
             config_subentry_id=subentry_id,
         )

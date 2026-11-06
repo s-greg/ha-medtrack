@@ -112,6 +112,8 @@ async def test_no_stock_means_no_stock_entities(hass: HomeAssistant) -> None:
     assert ent_reg.async_get("sensor.metformin_stock") is None
     assert ent_reg.async_get("sensor.metformin_days_remaining") is None
     assert ent_reg.async_get("binary_sensor.metformin_low_stock") is None
+    assert ent_reg.async_get("number.metformin_refill_amount") is None
+    assert ent_reg.async_get("button.metformin_refill") is None
     assert ent_reg.async_get("sensor.metformin_status") is not None
     assert ent_reg.async_get("button.metformin_take") is not None
 
@@ -156,6 +158,8 @@ async def test_toggle_stock_tracking_via_reconfigure(
     assert CONF_CURRENT_STOCK not in hub_entry.subentries[subentry_id].data
     assert ent_reg.async_get("sensor.metformin_stock") is None
     assert ent_reg.async_get("binary_sensor.metformin_low_stock") is None
+    assert ent_reg.async_get("number.metformin_refill_amount") is None
+    assert ent_reg.async_get("button.metformin_refill") is None
     assert hass.states.get("sensor.metformin_stock") is None
 
     await reconfigure(12.0)

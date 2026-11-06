@@ -13,6 +13,7 @@ from homeassistant.helpers import issue_registry as ir
 from .const import (
     ACTION_PREFIX,
     DOMAIN,
+    LOW_STOCK_TAG_PREFIX,
     NOTIFY_GROUP,
     NOTIFY_TIMEOUT,
     TAG_PREFIX,
@@ -181,6 +182,56 @@ def missed_payload(
     return {
         "title": f"Missed: {medication.name}",
         "message": _body(medication, dose),
+        "data": data,
+    }
+
+
+def low_stock_tag(subentry_id: str) -> str:
+    """Tag of a medication's low-stock notification."""
+    return f"{LOW_STOCK_TAG_PREFIX}{subentry_id}"
+
+
+def low_stock_payload(
+    medication: Medication,
+    stock: float,
+    days_remaining: float | None,
+    settings: HubSettings,
+    *,
+    alert_id: str,
+    url: str | None = None,
+) -> dict[str, Any]:
+    """Service data for the low-stock alert (spec §6).
+
+    The "Refilled" action is only offered when the medication has a default
+    refill amount. `alert_id` makes a second tap (other phone) a no-op.
+    """
+    message = f"{format_quantity(stock, medication.unit)} left"
+    if days_remaining is not None:
+        days = int(days_remaining)
+        message += f" · about {days} day{'' if days == 1 else 's'}"
+    if medication.refill_amount:
+        message += f". Refilled adds {format_quantity(medication.refill_amount, medication.unit)}"
+    data: dict[str, Any] = {
+        "tag": low_stock_tag(medication.subentry_id),
+        "group": NOTIFY_GROUP,
+        "push": {"interruption-level": settings.interruption_level},
+        "action_data": {
+            "medication_id": medication.subentry_id,
+            "alert_id": alert_id,
+        },
+    }
+    if medication.refill_amount:
+        data["actions"] = [
+            {
+                "action": action_id(ActionVerb.REFILL, medication.subentry_id),
+                "title": "Refilled",
+            }
+        ]
+    if url:
+        data["url"] = url
+    return {
+        "title": f"Low stock: {medication.name}",
+        "message": message,
         "data": data,
     }
 

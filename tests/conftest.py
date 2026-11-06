@@ -198,3 +198,59 @@ def reset(calls: dict[str, list[ServiceCall]]) -> None:
     """Forget captured calls."""
     for target_calls in calls.values():
         target_calls.clear()
+
+
+async def start_hub(
+    hass: HomeAssistant,
+    freezer: FrozenDateTimeFactory,
+    medication: dict[str, Any] | None = None,
+    options: dict[str, Any] | None = None,
+    start: datetime | None = None,
+) -> tuple[MockConfigEntry, str]:
+    """Set up a hub with Metformin at `start` (default Thu 5 Nov 07:00)."""
+    await use_amsterdam(hass)
+    freezer.move_to(start or local(2026, 11, 5, 7, 0))
+    entry = make_hub_entry(hass, medication, options)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    return entry, next(iter(entry.subentries))
+
+
+def edit_medication(
+    hass: HomeAssistant, entry: MockConfigEntry, subentry_id: str, **changes: Any
+) -> None:
+    """Save the medication form with some fields changed."""
+    subentry = entry.subentries[subentry_id]
+    hass.config_entries.async_update_subentry(
+        entry, subentry, data={**subentry.data, **changes}
+    )
+
+
+async def press(hass: HomeAssistant, entity_id: str) -> None:
+    """Press a button entity (as the user on the device page)."""
+    await hass.services.async_call(
+        "button", "press", {"entity_id": entity_id}, blocking=True
+    )
+
+
+async def medtrack(
+    hass: HomeAssistant, service: str, data: dict[str, Any] | None = None
+) -> Any:
+    """Call a MedTrack action; returns the response of get_history."""
+    return await hass.services.async_call(
+        DOMAIN,
+        service,
+        data or {},
+        blocking=True,
+        return_response=service == "get_history",
+    )
+
+
+def medication_device_id(hass: HomeAssistant, subentry_id: str) -> str:
+    """Device ID of a medication."""
+    return device_page(hass, subentry_id).rsplit("/", 1)[1]
+
+
+def history(entry: MockConfigEntry) -> list[dict[str, Any]]:
+    """The hub's history records."""
+    return entry.runtime_data.history

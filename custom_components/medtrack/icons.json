@@ -1,9 +1,15 @@
 {
   "entity": {
     "sensor": {
-      "stock": { "default": "mdi:pill-multiple" },
-      "days_remaining": { "default": "mdi:calendar-clock" },
-      "next_dose": { "default": "mdi:clock-outline" },
+      "stock": {
+        "default": "mdi:pill-multiple"
+      },
+      "days_remaining": {
+        "default": "mdi:calendar-clock"
+      },
+      "next_dose": {
+        "default": "mdi:clock-outline"
+      },
       "status": {
         "default": "mdi:pill",
         "state": {
@@ -15,17 +21,65 @@
           "missed": "mdi:alert-circle"
         }
       },
-      "taken_today": { "default": "mdi:check-all" },
-      "doses_due_today": { "default": "mdi:calendar-today" },
-      "doses_taken_today": { "default": "mdi:check-all" }
+      "taken_today": {
+        "default": "mdi:check-all"
+      },
+      "doses_due_today": {
+        "default": "mdi:calendar-today"
+      },
+      "doses_taken_today": {
+        "default": "mdi:check-all"
+      }
     },
     "binary_sensor": {
-      "low_stock": { "default": "mdi:package-variant", "state": { "on": "mdi:package-variant-remove" } }
+      "low_stock": {
+        "default": "mdi:package-variant",
+        "state": {
+          "on": "mdi:package-variant-remove"
+        }
+      }
     },
     "button": {
-      "take": { "default": "mdi:check" },
-      "skip": { "default": "mdi:debug-step-over" },
-      "snooze": { "default": "mdi:alarm-snooze" }
+      "take": {
+        "default": "mdi:check"
+      },
+      "skip": {
+        "default": "mdi:debug-step-over"
+      },
+      "snooze": {
+        "default": "mdi:alarm-snooze"
+      },
+      "refill": {
+        "default": "mdi:package-variant-closed-plus"
+      }
+    },
+    "number": {
+      "refill_amount": {
+        "default": "mdi:package-variant-plus"
+      }
+    }
+  },
+  "services": {
+    "take_dose": {
+      "service": "mdi:check"
+    },
+    "skip_dose": {
+      "service": "mdi:debug-step-over"
+    },
+    "snooze_dose": {
+      "service": "mdi:alarm-snooze"
+    },
+    "refill": {
+      "service": "mdi:package-variant-closed-plus"
+    },
+    "set_stock": {
+      "service": "mdi:counter"
+    },
+    "undo_last": {
+      "service": "mdi:undo"
+    },
+    "get_history": {
+      "service": "mdi:history"
     }
   }
 }

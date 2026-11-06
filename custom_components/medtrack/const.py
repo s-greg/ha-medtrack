@@ -141,6 +141,8 @@ class ActionVerb(StrEnum):
     TAKEN = "TAKEN"
     SNOOZE = "SNOOZE"
     SKIP = "SKIP"
+    # Low-stock notification: MEDTRACK_REFILL_<subentry_id>
+    REFILL = "REFILL"
 
 
 # Bus events: medtrack_dose_<state>
@@ -156,7 +158,30 @@ STOCK_ENTITY_KEYS: Final = (
     ("sensor", "stock"),
     ("sensor", "days_remaining"),
     ("binary_sensor", "low_stock"),
+    ("number", "refill_amount"),
+    ("button", "refill"),
 )
+
+# Low-stock notification tag: medtrack_lowstock_<subentry_id>
+LOW_STOCK_TAG_PREFIX: Final = f"{TAG_PREFIX}lowstock_"
+# undo_last only reverts records younger than this.
+UNDO_WINDOW: Final = timedelta(hours=24)
+# Records returned by diagnostics.
+DIAGNOSTICS_HISTORY: Final = 50
+
+# --- Services (actions) -------------------------------------------------------
+SERVICE_TAKE_DOSE: Final = "take_dose"
+SERVICE_SKIP_DOSE: Final = "skip_dose"
+SERVICE_SNOOZE_DOSE: Final = "snooze_dose"
+SERVICE_REFILL: Final = "refill"
+SERVICE_SET_STOCK: Final = "set_stock"
+SERVICE_UNDO_LAST: Final = "undo_last"
+SERVICE_GET_HISTORY: Final = "get_history"
+ATTR_DOSE_ID: Final = "dose_id"
+ATTR_MINUTES: Final = "minutes"
+ATTR_AMOUNT: Final = "amount"
+ATTR_START: Final = "start"
+ATTR_END: Final = "end"
 
 # Values of the per-medication status sensor (state of the most recent dose).
 STATUS_IDLE: Final = "idle"

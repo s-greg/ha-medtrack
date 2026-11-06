@@ -75,7 +75,7 @@ These were checked against the Companion App docs (companion.home-assistant.io) 
 | Instructions | text, optional | e.g. "with food"; shown in the notification body |
 | Current stock | float ≥ 0, optional | Empty = stock tracking off for this medication (no decrement, no low-stock alerts, no Stock / Days remaining / Low stock entities). Filling it in later turns tracking on. In reconfigure the field shows the live stock; changing it is a logged stock correction (same as `set_stock`), not a reset |
 | Low-stock threshold | float ≥ 0, optional | Alert when stock ≤ threshold. Empty = track stock but never alert |
-| Default refill amount | float, optional | Pre-fills the refill action |
+| Default refill amount | float, optional | Pre-fills the Refill amount entity, and is the default of `medtrack.refill` and the low-stock "Refilled" action |
 | Critical mode | select | `never` / `final_reminder` / `all_reminders` |
 | Overrides | optional | Re-remind interval, max reminders (fall back to hub values) |
 | Active | bool | Paused medications send nothing. Pausing while a dose runs records it as `skipped` (`source: system`, `reason: paused`) and clears its notification |
@@ -95,6 +95,7 @@ States: `scheduled → pending → (snoozed ⇄ pending) → taken | taken_late 
 - **Taken:** `taken` (or `taken_late` if after `missed`). Decrement stock. Clear the notification on **all** targets (`clear_notification` + tag). Cancel pending timers.
 - **Skipped:** `skipped`, no stock change, clear on all targets.
 - **Early take:** a Taken action (button entity or service) within the early-take window before the dose time resolves that upcoming dose; no reminder is sent.
+- **Early skip:** the same applies to Skip (button entity or `skip_dose`): an upcoming dose within the early-take window is recorded as `skipped` and gets no reminder.
 - **Idempotency:** an action for an already-resolved dose (for example, tapped on a second phone after the first) is ignored and just triggers a clear on all targets.
 - **Pause / inactive medication:** no doses generated.
 
@@ -137,15 +138,16 @@ data:
 - Parse actions by prefix `MEDTRACK_`, then verb, then dose ID. Prefer `action_data.dose_id` when present, fall back to parsing the identifier.
 - Send to all targets concurrently. If one target fails, log a warning and continue with the others; never let a notify error break the scheduler.
 - Clearing: `message: clear_notification`, `data: {tag: "medtrack_<dose_id>"}` to every target.
-- **Low stock:** one notification per threshold crossing (not on every dose), tag `medtrack_lowstock_<subentry_id>`, with a "Refilled" action that applies the default refill amount if set. Re-arms after stock rises above the threshold.
+- **Low stock:** one notification per threshold crossing (not on every dose), tag `medtrack_lowstock_<subentry_id>`, title "Low stock: <name>", message "<stock> <unit> left · about <n> days", hub interruption level, `url` as for reminders. It has a "Refilled" action (`MEDTRACK_REFILL_<subentry_id>`, `action_data: {medication_id, alert_id}`) only when a default refill amount is set; it adds that amount once (a second tap on another phone is ignored) and clears the alert on all phones. Re-arms after stock rises above the threshold (or the threshold is removed); the alert is then cleared from the phones. The "already alerted" flag is persisted, so a restart does not re-alert.
 - **Rate budget:** worst case per device per day = Σ over meds of (doses/day × (max_reminders + max_snoozes + 1)). Log a warning at setup if this exceeds 400.
 
 ## 7. Inventory
 
 - Applies only to medications with stock tracking on (current stock filled in, §4.2). Low-stock alerts additionally need a threshold.
 - Stock is a float in the medication's unit. Taken / taken late subtracts the dose amount; never goes below 0 (clamp and log a warning).
-- Days remaining = stock ÷ average daily use, where average daily use = dose × len(times) × (active days ÷ 7). Unknown (None) if usage is 0.
+- Days remaining = stock ÷ average daily use, where average daily use = dose × len(times) × (active days ÷ 7). Unknown (None) if usage is 0 or the medication is paused.
 - Undo restores stock (see actions).
+- Refill from the device page: the number entity "Refill amount" holds the amount; the "Refill" button adds it (same as `medtrack.refill`) and resets the entity to the default refill amount. An empty or 0 amount falls back to the default; without a default the button shows an error explaining what to do.
 
 ## 8. Entities (per medication device)
 
@@ -159,35 +161,37 @@ data:
 | sensor | `status` | `device_class: enum`: `idle`, `pending`, `snoozed`, `taken`, `taken_late`, `skipped`, `missed` (state of the most recent dose). Attributes: current dose ID, reminders sent, snoozes used |
 | sensor | `taken_today` | Numeric count of doses taken today; attribute `due_today` |
 | binary_sensor | `low_stock` | `device_class: problem`. Only with stock tracking; always off without a threshold |
-| button | `take` | Confirms the pending dose, or an upcoming one within the early-take window; otherwise does nothing and logs at info level |
-| button | `skip` | Skips the pending dose |
-| button | `snooze` | Snoozes the pending dose |
+| button | `take` | Confirms the pending dose, or an upcoming one within the early-take window; otherwise shows an error |
+| button | `skip` | Skips the pending dose, or an upcoming one within the early-take window; otherwise shows an error |
+| button | `snooze` | Snoozes the pending dose; shows an error when there is none or no snoozes are left |
+| number | `refill_amount` | Box mode, unit = medication unit; starts at (and after each refill returns to) the default refill amount, empty without one. Not persisted. Only with stock tracking |
+| button | `refill` | Adds the Refill amount to stock and logs a refill record (§7). Only with stock tracking |
 
 Hub device (optional): sensor `doses_due_today`, sensor `doses_taken_today`.
 
 ## 9. Actions (services) — `services.yaml` with descriptions
 
-All target a medication via `device_id` or `entity_id` of one of its entities.
+All target exactly one medication via `device_id` or `entity_id` of one of its entities (`take_dose` / `skip_dose` may give only a `dose_id`; `get_history` accepts several medications, the hub device for all of its medications, or no target for all). Anything that cannot be done raises a user-visible error.
 
 | Action | Fields | Effect |
 |---|---|---|
-| `medtrack.take_dose` | `dose_id` optional | Same rules as the Taken button |
-| `medtrack.skip_dose` | `dose_id` optional | |
-| `medtrack.snooze_dose` | `minutes` optional | |
+| `medtrack.take_dose` | `dose_id` optional | Same rules as the Taken button; with `dose_id` that dose (pending, snoozed, missed = taken late, or upcoming in the early window) |
+| `medtrack.skip_dose` | `dose_id` optional | Same rules as the Skip button |
+| `medtrack.snooze_dose` | `minutes` optional (5–120) | Default: hub snooze length |
 | `medtrack.refill` | `amount` optional (default refill amount) | Adds stock, logs a refill record |
 | `medtrack.set_stock` | `amount` required | Stock correction, logged |
-| `medtrack.undo_last` | — | Reverts the medication's last taken/skipped/refill (within 24 h), restores stock |
-| `medtrack.get_history` | `start`, `end`, optional medication | **Returns a response** (`SupportsResponse.ONLY`) with history records; used by the dashboard card later. **VERIFY** response-service API |
+| `medtrack.undo_last` | — | Reverts the medication's last taken/skipped/refill (within 24 h, not by the system), restores stock (unless a stock correction came after it). A reverted dose before its time is scheduled again; inside its reminder window it goes back to `pending` and the reminder is re-sent; otherwise (or if it was taken late, or a newer dose has started) it is `missed` again with its "Taken late" notification. Repeating undo goes further back. `set_stock` is not undoable. Logged as an `undo` record with `undone_id` |
+| `medtrack.get_history` | `start`, `end` optional, optional medication | **Returns a response** (`SupportsResponse.ONLY`): `{records: [...]}`, oldest first, each record plus `medication` (current name, None if deleted); used by the dashboard card later |
 
 ## 10. History (Store)
 
-Record: `{id, type: dose|refill|stock_set|undo, medication_id, dose_id?, scheduled_at?, state?, at, user_id?, amount?, source: notification|button|service|system|config}`. `config` marks a stock correction made in the medication form.
+Record: `{id, type: dose|refill|stock_set|undo, medication_id, dose_id?, scheduled_at?, state?, at, user_id?, amount?, source: notification|button|service|system|config}`. `config` marks a stock correction made in the medication form. On a taken dose `amount` is the stock actually used; on an undo it is the stock change and `undone_id` is the reverted record.
 
 - Persist the in-flight state of all pending doses so a restart resumes them.
 - **Startup recovery (never a burst):** per medication, only the most recent dose that is still inside its reminder window is resumed. If a reminder became due while HA was down, the next reminder is sent immediately, otherwise it follows its normal timeline (so a quick reload does not cause an extra reminder). All older doses, and the newest one if its window has passed, are marked `missed` silently (`source: system`, no notifications). At most the last 48 h of downtime are reconstructed.
-- Apply the retention setting daily.
+- Apply the retention setting at startup and daily at local midnight.
 - Schema version 1 plus a migration hook.
-- Diagnostics (`diagnostics.py`) returning config and the last 50 history records, with nothing redacted except user IDs.
+- Diagnostics (`diagnostics.py`) returning config, stock, running doses and the last 50 history records, with nothing redacted except user IDs and notify target names (owner decision, Phase 0).
 
 ## 11. Time handling
 

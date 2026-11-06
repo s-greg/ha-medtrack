@@ -46,6 +46,7 @@ from .const import (
     STOCK_ENTITY_KEYS,
     SUBENTRY_MEDICATION,
     TAKEN_STATES,
+    UNDO_WINDOW,
     ActionVerb,
     DoseState,
     Source,
@@ -54,6 +55,8 @@ from .models import Dose, HubSettings, Medication, display_precision
 from .notifications import (
     Notifier,
     dose_tag,
+    low_stock_payload,
+    low_stock_tag,
     missed_payload,
     missing_target_issue_id,
     parse_action,
@@ -86,6 +89,15 @@ def signal_update(entry_id: str) -> str:
     return f"{DOMAIN}_{entry_id}_update"
 
 
+# Dose results undo_last can revert.
+UNDOABLE_STATES = frozenset({*TAKEN_STATES, DoseState.SKIPPED})
+
+
+def _round(value: float) -> float:
+    """Avoid float noise in stock values (0.1 + 0.2 = 0.30000000000000004)."""
+    return round(value, 6)
+
+
 @dataclass(kw_only=True)
 class StockState:
     """Persisted stock bookkeeping of one medication."""
@@ -94,6 +106,9 @@ class StockState:
     # The form value last applied, to detect edits made in the medication form.
     config_stock: float | None
     low_stock_alerted: bool = False
+    # ID of the low-stock notification whose "Refilled" button has not been
+    # used yet (a second tap, on another phone, is then ignored).
+    low_stock_alert_id: str | None = None
 
 
 class MedTrackManager:
@@ -131,6 +146,11 @@ class MedTrackManager:
         # entities; live entities register themselves per medication.
         self._entity_adders: list[Callable[[str], None]] = []
         self._entities: dict[str, set[Entity]] = {}
+        # Value of each medication's "Refill amount" number entity (not
+        # persisted; starts at, and is reset to, the default refill amount).
+        self.refill_input: dict[str, float | None] = {
+            sid: med.refill_amount for sid, med in self.medications.items()
+        }
 
     @property
     def tz(self) -> tzinfo:
@@ -148,7 +168,10 @@ class MedTrackManager:
         await self._async_drop_unscheduled_doses(now)
         self._recover(now)
         self._extend_horizon(now)
+        self._apply_retention(now)
         self._check_rate_budget()
+        for med in self.medications.values():
+            await self._async_check_low_stock(med)
         await self._async_save()
 
         self._unsubs.append(
@@ -213,8 +236,11 @@ class MedTrackManager:
                 await self._async_remove_medication(sid)
             for sid in added:
                 self.medications[sid] = Medication.from_subentry(sid, *current[sid])
+                self.refill_input[sid] = self.medications[sid].refill_amount
                 self._apply_config_stock(sid, now)
             self._subentry_config = current
+            for med in self.medications.values():
+                await self._async_check_low_stock(med)
             self._extend_horizon(now)
             self._check_rate_budget()
             await self._async_save()
@@ -248,6 +274,8 @@ class MedTrackManager:
         new = Medication.from_subentry(sid, title, data)
         self.medications[sid] = new
         self._apply_config_stock(sid, now)
+        if new.refill_amount != old.refill_amount:
+            self.refill_input[sid] = new.refill_amount
         if new.name != old.name:
             self._rename_device(sid, new.name)
         if old.active and not new.active:
@@ -272,8 +300,11 @@ class MedTrackManager:
             if dose.is_active or dose.state == DoseState.MISSED:
                 await self._notifier.async_clear(dose_tag(dose.dose_id))
             del self.doses[dose.dose_id]
+        state = self.stock_state.pop(sid, None)
+        if state is not None and state.low_stock_alerted:
+            await self._notifier.async_clear(low_stock_tag(sid))
         self.medications.pop(sid, None)
-        self.stock_state.pop(sid, None)
+        self.refill_input.pop(sid, None)
 
     @callback
     def _rename_device(self, identifier: str, name: str) -> None:
@@ -587,6 +618,7 @@ class MedTrackManager:
                 return
             now = dt_util.utcnow()
             self._extend_horizon(now)
+            self._apply_retention(now)
             self._schedule_save()
             self._schedule_wakeup(now)
         self.async_notify_entities()
@@ -684,9 +716,17 @@ class MedTrackManager:
         source: Source,
         user_id: str | None = None,
         reason: str | None = None,
+        amount: float | None = None,
     ) -> None:
-        """Change state, fire medtrack_dose_<state> and append a history record."""
-        extra = {} if reason is None else {"reason": reason}
+        """Change state, fire medtrack_dose_<state> and append a history record.
+
+        `amount` is the stock actually used by a taken dose (undo adds it back).
+        """
+        extra: dict[str, Any] = {}
+        if reason is not None:
+            extra["reason"] = reason
+        if amount is not None:
+            extra["amount"] = amount
         dose.state = state
         if state not in (DoseState.PENDING, DoseState.SNOOZED, DoseState.SCHEDULED):
             dose.resolved_at = at
@@ -744,6 +784,9 @@ class MedTrackManager:
             return
         verb, ident = parsed
         action_data = event.data.get("action_data")
+        if verb == ActionVerb.REFILL:
+            self._handle_refill_event(event, ident, action_data)
+            return
         dose_id = (
             action_data.get("dose_id") if isinstance(action_data, dict) else None
         ) or ident
@@ -755,6 +798,21 @@ class MedTrackManager:
                 verb, dose_id, user_id=event.context.user_id, source=Source.NOTIFICATION
             ),
             "medtrack notification action",
+        )
+
+    @callback
+    def _handle_refill_event(self, event: Event, ident: str, action_data: Any) -> None:
+        """The "Refilled" button of a low-stock notification."""
+        data = action_data if isinstance(action_data, dict) else {}
+        sid = data.get("medication_id") or ident
+        if sid not in self.medications:
+            return  # another hub's medication, or a removed one
+        self.entry.async_create_task(
+            self.hass,
+            self.async_refill_from_alert(
+                sid, data.get("alert_id"), user_id=event.context.user_id
+            ),
+            "medtrack refill action",
         )
 
     async def async_handle_action(
@@ -821,16 +879,19 @@ class MedTrackManager:
                 new_state = DoseState.TAKEN
             else:
                 return False
-            self._transition(med, dose, new_state, now, source=source, user_id=user_id)
+            used = self._decrement_stock(med)
+            self._transition(
+                med, dose, new_state, now, source=source, user_id=user_id, amount=used
+            )
             dose.next_action_at = dose.scheduled_at + DOSE_RETENTION
-            self._decrement_stock(med)
             await self._notifier.async_clear(dose_tag(dose.dose_id))
+            await self._async_check_low_stock(med)
             return True
 
-        if not dose.is_active:
-            return False
-
-        if verb == ActionVerb.SKIP:
+        if verb == ActionVerb.SKIP and (
+            dose.is_active
+            or (dose.state == DoseState.SCHEDULED and self._in_early_window(dose, now))
+        ):
             self._transition(
                 med, dose, DoseState.SKIPPED, now, source=source, user_id=user_id
             )
@@ -838,7 +899,8 @@ class MedTrackManager:
             await self._notifier.async_clear(dose_tag(dose.dose_id))
             return True
 
-        # Snooze
+        if verb != ActionVerb.SNOOZE or not dose.is_active:
+            return False
         if dose.snoozes_used >= self.settings.max_snoozes:
             _LOGGER.info("No snoozes left for dose %s", dose.dose_id)
             return False
@@ -893,8 +955,8 @@ class MedTrackManager:
     async def async_skip(
         self, subentry_id: str, *, user_id: str | None, source: Source = Source.BUTTON
     ) -> bool:
-        """Skip button: the running dose."""
-        dose = self.find_dose(subentry_id, early=False)
+        """Skip button: the running dose, or an upcoming one in the early window."""
+        dose = self.find_dose(subentry_id, early=True)
         if dose is None:
             raise self._nothing_to_do("nothing_to_skip", subentry_id)
         return await self.async_handle_action(
@@ -902,40 +964,359 @@ class MedTrackManager:
         )
 
     async def async_snooze(
-        self, subentry_id: str, *, user_id: str | None, source: Source = Source.BUTTON
+        self,
+        subentry_id: str,
+        *,
+        user_id: str | None,
+        source: Source = Source.BUTTON,
+        minutes: int | None = None,
     ) -> bool:
-        """Snooze button: the running dose."""
+        """Snooze button / snooze_dose: the running dose (`minutes` overrides
+        the hub's snooze length)."""
         dose = self.find_dose(subentry_id, early=False)
         if dose is None:
             raise self._nothing_to_do("nothing_to_snooze", subentry_id)
         if dose.snoozes_used >= self.settings.max_snoozes:
             raise self._nothing_to_do("no_snoozes_left", subentry_id)
         return await self.async_handle_action(
-            ActionVerb.SNOOZE, dose.dose_id, user_id=user_id, source=source
+            ActionVerb.SNOOZE,
+            dose.dose_id,
+            user_id=user_id,
+            source=source,
+            snooze_minutes=minutes,
         )
 
-    def _nothing_to_do(self, key: str, subentry_id: str) -> ServiceValidationError:
-        """User-visible error for a button press that cannot do anything."""
+    def _nothing_to_do(
+        self, key: str, subentry_id: str, **placeholders: str
+    ) -> ServiceValidationError:
+        """User-visible error for a press or action that cannot do anything."""
         return ServiceValidationError(
             translation_domain=DOMAIN,
             translation_key=key,
-            translation_placeholders={"medication": self.medications[subentry_id].name},
+            translation_placeholders={
+                "medication": self.medications[subentry_id].name,
+                **placeholders,
+            },
         )
 
     # --- Stock --------------------------------------------------------------------
 
-    def _decrement_stock(self, med: Medication) -> None:
+    def _decrement_stock(self, med: Medication) -> float | None:
+        """Subtract one dose. Returns the stock actually used (None when stock
+        is not tracked); stock never goes below 0."""
         state = self.stock_state.get(med.subentry_id)
         if state is None or state.stock is None:
-            return  # stock tracking off
-        new_stock = state.stock - med.dose_amount
-        if new_stock < 0:
+            return None
+        used = med.dose_amount
+        if used > state.stock:
             _LOGGER.warning(
                 "Stock of %s would go below 0; set to 0. Check the stock value",
                 med.name,
             )
-            new_stock = 0.0
-        state.stock = new_stock
+            used = state.stock
+        state.stock = _round(state.stock - used)
+        return used
+
+    def _tracked_stock(self, sid: str) -> StockState:
+        """Stock state of a medication that tracks stock, else a visible error."""
+        state = self.stock_state.get(sid)
+        if state is None or state.stock is None:
+            raise self._nothing_to_do("stock_not_tracked", sid)
+        return state
+
+    async def _async_check_low_stock(self, med: Medication) -> None:
+        """Send the low-stock alert once per threshold crossing (spec §6).
+
+        It re-arms (and the alert is cleared from the phones) once stock is
+        above the threshold again, or when there is no threshold any more.
+        """
+        sid = med.subentry_id
+        state = self.stock_state.get(sid)
+        if state is None:
+            return
+        low = self.low_stock(sid)
+        if low and not state.low_stock_alerted and state.stock is not None:
+            state.low_stock_alerted = True
+            state.low_stock_alert_id = ulid_util.ulid_now()
+            _LOGGER.info("Stock of %s is low", med.name)
+            await self._notifier.async_send(
+                low_stock_payload(
+                    med,
+                    state.stock,
+                    self.days_remaining(sid),
+                    self.settings,
+                    alert_id=state.low_stock_alert_id,
+                    url=self.tap_url(sid),
+                )
+            )
+        elif not low and state.low_stock_alerted:
+            state.low_stock_alerted = False
+            state.low_stock_alert_id = None
+            await self._notifier.async_clear(low_stock_tag(sid))
+
+    def _add_stock(
+        self,
+        med: Medication,
+        state: StockState,
+        amount: float,
+        now: datetime,
+        *,
+        user_id: str | None,
+        source: Source,
+    ) -> None:
+        assert state.stock is not None
+        state.stock = _round(state.stock + amount)
+        self._add_history(
+            "refill",
+            med.subentry_id,
+            now,
+            source=source,
+            user_id=user_id,
+            amount=amount,
+        )
+        _LOGGER.info("Refilled %s", med.name)
+
+    async def async_refill(
+        self,
+        sid: str,
+        amount: float | None = None,
+        *,
+        user_id: str | None,
+        source: Source,
+        reset_input: bool = False,
+    ) -> None:
+        """Add stock and log a refill record.
+
+        An empty or 0 amount means the default refill amount; without one
+        that is a user-visible error. `reset_input` puts the "Refill amount"
+        entity back to the default afterwards (the Refill button).
+        """
+        async with self._lock:
+            if self._stopped:
+                return
+            med = self.medications[sid]
+            state = self._tracked_stock(sid)
+            amount = amount or med.refill_amount
+            if not amount or amount <= 0:
+                raise self._nothing_to_do("no_refill_amount", sid)
+            self._add_stock(
+                med, state, amount, dt_util.utcnow(), user_id=user_id, source=source
+            )
+            if reset_input:
+                self.refill_input[sid] = med.refill_amount
+            await self._async_check_low_stock(med)
+            await self._async_save()
+        self.async_notify_entities()
+
+    async def async_refill_from_alert(
+        self, sid: str, alert_id: str | None, *, user_id: str | None
+    ) -> None:
+        """ "Refilled" on the low-stock notification: add the default amount once.
+
+        A second tap (on another phone, or an old notification) does nothing
+        except removing the alert from every phone.
+        """
+        async with self._lock:
+            if self._stopped:
+                return
+            med = self.medications.get(sid)
+            state = self.stock_state.get(sid)
+            if med is None or state is None or state.stock is None:
+                return
+            current = state.low_stock_alert_id
+            if alert_id is not None and current is not None and alert_id != current:
+                return  # an outdated alert; the current one stays on the phones
+            if current is None or not med.refill_amount:
+                await self._notifier.async_clear(low_stock_tag(sid))
+                return
+            state.low_stock_alert_id = None
+            self._add_stock(
+                med,
+                state,
+                med.refill_amount,
+                dt_util.utcnow(),
+                user_id=user_id,
+                source=Source.NOTIFICATION,
+            )
+            await self._notifier.async_clear(low_stock_tag(sid))
+            await self._async_check_low_stock(med)
+            await self._async_save()
+        self.async_notify_entities()
+
+    async def async_set_stock(
+        self, sid: str, amount: float, *, user_id: str | None, source: Source
+    ) -> None:
+        """Stock correction, logged as a stock_set record."""
+        async with self._lock:
+            if self._stopped:
+                return
+            med = self.medications[sid]
+            state = self._tracked_stock(sid)
+            state.stock = _round(amount)
+            self._add_history(
+                "stock_set",
+                sid,
+                dt_util.utcnow(),
+                source=source,
+                user_id=user_id,
+                amount=state.stock,
+            )
+            _LOGGER.info("Stock of %s set to %s", med.name, state.stock)
+            await self._async_check_low_stock(med)
+            await self._async_save()
+        self.async_notify_entities()
+
+    @callback
+    def async_set_refill_input(self, sid: str, value: float) -> None:
+        """New value typed into the "Refill amount" entity."""
+        self.refill_input[sid] = value
+        self.async_notify_entities()
+
+    # --- Undo ---------------------------------------------------------------------
+
+    def _undo_candidate(self, sid: str, now: datetime) -> int | None:
+        """Index of the newest record undo_last may revert: a taken, taken late
+        or skipped dose (not by the system) or a refill, at most 24 h old and
+        not undone yet."""
+        undone = {r.get("undone_id") for r in self.history if r["type"] == "undo"}
+        cutoff = now - UNDO_WINDOW
+        for index in range(len(self.history) - 1, -1, -1):
+            record = self.history[index]
+            if datetime.fromisoformat(record["at"]) < cutoff:
+                break  # records are in time order
+            if record["medication_id"] != sid or record["id"] in undone:
+                continue
+            if record["type"] == "refill" or (
+                record["type"] == "dose"
+                and record.get("state") in UNDOABLE_STATES
+                and record["source"] != Source.SYSTEM
+            ):
+                return index
+        return None
+
+    async def async_undo_last(
+        self, sid: str, *, user_id: str | None, source: Source
+    ) -> None:
+        """Revert the medication's last taken / skipped dose or refill.
+
+        Stock is restored, unless a stock correction was made after it (the
+        corrected value is then kept). A reverted dose runs again: before its
+        time it waits as scheduled; inside its reminder window reminders
+        resume; otherwise (or if it was taken late) it is missed again with
+        its "Taken late" notification.
+        """
+        async with self._lock:
+            if self._stopped:
+                return
+            med = self.medications[sid]
+            now = dt_util.utcnow()
+            index = self._undo_candidate(sid, now)
+            if index is None:
+                raise self._nothing_to_do("nothing_to_undo", sid)
+            record = self.history[index]
+            fields: dict[str, Any] = {"undone_id": record["id"]}
+
+            delta = record.get("amount") or 0.0
+            if record["type"] == "refill":
+                delta = -delta
+            corrected_later = any(
+                later["medication_id"] == sid and later["type"] == "stock_set"
+                for later in self.history[index + 1 :]
+            )
+            state = self.stock_state.get(sid)
+            if delta and not corrected_later and state and state.stock is not None:
+                new_stock = _round(max(state.stock + delta, 0.0))
+                fields["amount"] = _round(new_stock - state.stock)
+                state.stock = new_stock
+
+            if record["type"] == "dose":
+                fields["dose_id"] = record["dose_id"]
+                dose = self.doses.get(record["dose_id"])
+                if dose is not None and dose.state == record["state"]:
+                    state_after = await self._async_reopen(
+                        med, dose, DoseState(record["state"]), now
+                    )
+                    fields["state"] = state_after.value
+
+            self._add_history(
+                "undo", sid, now, source=source, user_id=user_id, **fields
+            )
+            _LOGGER.info("Undid the last %s of %s", record["type"], med.name)
+            await self._async_check_low_stock(med)
+            await self._async_save()
+            self._schedule_wakeup(now)
+        self.async_notify_entities()
+
+    async def _async_reopen(
+        self, med: Medication, dose: Dose, undone: DoseState, now: datetime
+    ) -> DoseState:
+        """Put a reverted dose back on its timeline; returns its new state."""
+        dose.resolved_at = None
+        if now < dose.scheduled_at:
+            dose.state = DoseState.SCHEDULED
+            dose.reminders_sent = 0
+            dose.next_action_at = dose.scheduled_at
+            return dose.state
+        deadline = (
+            dose.scheduled_at
+            + self._interval(med) * self._max_reminders(med)
+            + timedelta(minutes=self.settings.snooze_length) * dose.snoozes_used
+        )
+        newer_started = any(
+            other.subentry_id == med.subentry_id
+            and other.scheduled_at > dose.scheduled_at
+            and other.state != DoseState.SCHEDULED
+            for other in self.doses.values()
+        )
+        if undone != DoseState.TAKEN_LATE and now < deadline and not newer_started:
+            dose.state = DoseState.PENDING
+            dose.reminders_sent = max(dose.reminders_sent, 1)
+            dose.next_action_at = now + self._interval(med)
+            await self._async_send_reminder(med, dose)
+        else:
+            dose.state = DoseState.MISSED
+            dose.resolved_at = now
+            dose.next_action_at = dose.scheduled_at + DOSE_RETENTION
+            await self._notifier.async_send(
+                missed_payload(
+                    med, dose, self.settings, url=self.tap_url(med.subentry_id)
+                )
+            )
+        return dose.state
+
+    # --- History --------------------------------------------------------------------
+
+    def _apply_retention(self, now: datetime) -> None:
+        """Drop history older than the retention setting (0 = keep forever)."""
+        days = self.settings.history_retention
+        if days <= 0:
+            return
+        cutoff = now - timedelta(days=days)
+        kept = [r for r in self.history if datetime.fromisoformat(r["at"]) >= cutoff]
+        if len(kept) != len(self.history):
+            _LOGGER.debug(
+                "Removed %d old history records", len(self.history) - len(kept)
+            )
+            self.history = kept
+
+    def history_records(
+        self,
+        subentry_ids: set[str] | None = None,
+        start: datetime | None = None,
+        end: datetime | None = None,
+    ) -> list[dict[str, Any]]:
+        """History records (oldest first), optionally filtered by medication
+        and time; each copy gets the medication's current name."""
+        records = []
+        for record in self.history:
+            if subentry_ids is not None and record["medication_id"] not in subentry_ids:
+                continue
+            at = datetime.fromisoformat(record["at"])
+            if (start is not None and at < start) or (end is not None and at > end):
+                continue
+            med = self.medications.get(record["medication_id"])
+            records.append({**record, "medication": med.name if med else None})
+        return records
 
     # --- Values read by entities -----------------------------------------------------
 
@@ -950,8 +1331,19 @@ class MedTrackManager:
         return None if state is None else state.stock
 
     def days_remaining(self, subentry_id: str) -> float | None:
-        """Days until stock runs out at the scheduled use (Phase 3)."""
-        return None
+        """Stock divided by average daily use (spec §7).
+
+        Unknown when stock is not tracked, the medication is paused, or it has
+        no scheduled use.
+        """
+        med = self.medications[subentry_id]
+        stock = self.stock(subentry_id)
+        if stock is None or not med.active:
+            return None
+        daily_use = med.dose_amount * len(med.times) * len(med.days) / 7
+        if daily_use <= 0:
+            return None
+        return stock / daily_use
 
     def next_dose(self, subentry_id: str) -> datetime | None:
         """Time of the next dose that has not started yet."""
