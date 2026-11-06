@@ -344,6 +344,12 @@
     },
     "invalid_period": {
       "message": "The start must be before the end."
+    },
+    "unknown_hub": {
+      "message": "No running MedTrack hub with this ID."
+    },
+    "single_hub": {
+      "message": "There are several MedTrack hubs; select one."
     }
   },
   "services": {
@@ -412,6 +418,16 @@
         "end": {
           "name": "End",
           "description": "Optional. Only records up to this moment."
+        }
+      }
+    },
+    "get_day": {
+      "name": "Get day",
+      "description": "Returns today's doses of all medications of a MedTrack hub, with what can be done with each, plus stock and undo details. Used by the MedTrack Today card.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Hub",
+          "description": "Optional when there is only one MedTrack hub."
         }
       }
     }

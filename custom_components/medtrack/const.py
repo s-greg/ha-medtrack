@@ -177,11 +177,13 @@ SERVICE_REFILL: Final = "refill"
 SERVICE_SET_STOCK: Final = "set_stock"
 SERVICE_UNDO_LAST: Final = "undo_last"
 SERVICE_GET_HISTORY: Final = "get_history"
+SERVICE_GET_DAY: Final = "get_day"
 ATTR_DOSE_ID: Final = "dose_id"
 ATTR_MINUTES: Final = "minutes"
 ATTR_AMOUNT: Final = "amount"
 ATTR_START: Final = "start"
 ATTR_END: Final = "end"
+ATTR_CONFIG_ENTRY_ID: Final = "config_entry_id"
 
 # Values of the per-medication status sensor (state of the most recent dose).
 STATUS_IDLE: Final = "idle"

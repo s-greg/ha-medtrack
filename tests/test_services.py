@@ -457,12 +457,14 @@ def test_action_descriptions_match_strings() -> None:
             "set_stock",
             "undo_last",
             "get_history",
+            "get_day",
         }
     )
     for name, service in services.items():
         assert strings[name]["name"]
         assert strings[name]["description"]
-        assert "target" in service
+        # get_day selects a hub with a field; all others target a medication.
+        assert ("target" in service) == (name != "get_day")
         for field in (service or {}).get("fields", {}):
             assert strings[name]["fields"][field]["name"]
             assert strings[name]["fields"][field]["description"]
@@ -548,7 +550,8 @@ _FIELD = probatio.Schema(
 )
 _SERVICE = probatio.Schema(
     {
-        probatio.Required("target"): probatio.All(
+        # hassfest accepts a targeted or an untargeted service (get_day).
+        probatio.Optional("target"): probatio.All(
             selector.TargetSelector.CONFIG_SCHEMA, _no_device_filter
         ),
         probatio.Optional("fields"): probatio.Schema({str: _FIELD}),

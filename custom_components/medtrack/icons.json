@@ -86,6 +86,9 @@
     },
     "get_history": {
       "service": "mdi:history"
+    },
+    "get_day": {
+      "service": "mdi:calendar-today"
     }
   }
 }

@@ -183,7 +183,8 @@ All target exactly one medication via `device_id` or `entity_id` of one of its e
 | `medtrack.refill` | `amount` optional (default refill amount) | Adds stock, logs a refill record |
 | `medtrack.set_stock` | `amount` required | Stock correction, logged |
 | `medtrack.undo_last` | — | Reverts the medication's last taken/skipped/refill (within 24 h, not by the system), restores stock (unless a stock correction came after it). A reverted dose before its time is scheduled again; inside its reminder window it goes back to `pending` and the reminder is re-sent; otherwise (or if it was taken late, or a newer dose has started) it is `missed` again with its "Taken late" notification. Repeating undo goes further back. `set_stock` is not undoable. Logged as an `undo` record with `undone_id` |
-| `medtrack.get_history` | `start`, `end` optional, optional medication | **Returns a response** (`SupportsResponse.ONLY`): `{records: [...]}`, oldest first, each record plus `medication` (current name, None if deleted); used by the dashboard card later |
+| `medtrack.get_history` | `start`, `end` optional, optional medication | **Returns a response** (`SupportsResponse.ONLY`): `{records: [...]}`, oldest first, each record plus `medication` (current name, None if deleted); used by automations and dashboards |
+| `medtrack.get_day` | `config_entry_id` optional (required with several hubs) | **Returns a response** (`SupportsResponse.ONLY`): today's doses of one hub with per-dose `can_take` / `can_skip` / `can_snooze` / `can_undo`, per-medication stock and undo details, refills today, `taken` / `total` and `refresh_at`; used by the dashboard card (§14) |
 
 ## 10. History (Store)
 
@@ -237,6 +238,11 @@ LICENSE
 - Brand icon: **VERIFY** current HACS/HA brand-asset requirements for custom integrations.
 - README: installation via HACS custom repository, setup, the remote-access requirement for action buttons, the iOS built-in snooze caveat, the rate limit, and a "do not rely on this as your only reminder for critical medication" note.
 
-## 14. Phase 6 (later): dashboard card
+## 14. Phase 6: dashboard card "MedTrack Today"
 
-A custom Lovelace card (plain ES module web component, no build step, served from `www/` or bundled via HACS as a separate "Dashboard" repo) using the entities and `medtrack.get_history`. Three visual directions exist in `docs/design/` (static HTML mockups, 390×844 iPhone layout; read for layout, hierarchy and colors, not as runnable code). Which direction to build is decided before Phase 6 starts.
+Decided with the owner (design A, `docs/design/A-today-timeline.html`; read for layout, hierarchy and colors, not as runnable code):
+
+- One card shows today's doses of all medications of one hub: header with date and an "X of Y taken today" ring; a low-stock banner per medication at or below its threshold (tap: refill dialog pre-filled with the default refill amount, editable, confirm calls `medtrack.refill`); a timeline sorted by time (taken / taken late with the time, skipped, missed with "Taken late" while allowed, the running dose expanded with "reminder n of max", Taken / Snooze (only with snoozes left) / Skip; upcoming doses offer Take early / Skip inside the early-take window). Undo is offered only on the item `undo_last` would revert, always after a confirmation ("Undo 'Taken 10:28' for Vitamin D? Stock +1"). Errors show as a toast; an empty state when there are no doses today.
+- The card is shipped inside the integration (no separate HACS repo): MedTrack serves the JS file and loads it in the frontend automatically, cache-busted with the version number.
+- Plain JavaScript web component, no build step; visual editor (choose the hub), card picker entry, grid sizing; HA theme variables (light and dark); tap targets at least 44 px; works at iPhone width.
+- The card stays thin: `medtrack.get_day` (§9) computes everything; the card fetches it on load, whenever a MedTrack entity changes, and at the returned `refresh_at`.

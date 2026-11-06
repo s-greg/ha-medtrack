@@ -102,6 +102,13 @@ LAST_ACTION_LABELS = {
 UNDOABLE_STATES = frozenset({*TAKEN_STATES, DoseState.SKIPPED})
 
 
+def _local_iso(value: datetime | None) -> str | None:
+    """ISO 8601 in Home Assistant's time zone, to the second."""
+    if value is None:
+        return None
+    return dt_util.as_local(value).replace(microsecond=0).isoformat()
+
+
 def _round(value: float) -> float:
     """Avoid float noise in stock values (0.1 + 0.2 = 0.30000000000000004)."""
     return round(value, 6)
@@ -877,17 +884,13 @@ class MedTrackManager:
             return False
 
         if verb == ActionVerb.TAKEN:
-            if dose.is_active:
-                new_state = DoseState.TAKEN
-            elif (
-                dose.state == DoseState.MISSED
-                and now < dose.scheduled_at + DOSE_RETENTION
-            ):
-                new_state = DoseState.TAKEN_LATE
-            elif dose.state == DoseState.SCHEDULED and self._in_early_window(dose, now):
-                new_state = DoseState.TAKEN
-            else:
+            if not self._can_take(dose, now):
                 return False
+            new_state = (
+                DoseState.TAKEN_LATE
+                if dose.state == DoseState.MISSED
+                else DoseState.TAKEN
+            )
             used = self._decrement_stock(med)
             self._transition(
                 med, dose, new_state, now, source=source, user_id=user_id, amount=used
@@ -897,10 +900,7 @@ class MedTrackManager:
             await self._async_check_low_stock(med)
             return True
 
-        if verb == ActionVerb.SKIP and (
-            dose.is_active
-            or (dose.state == DoseState.SCHEDULED and self._in_early_window(dose, now))
-        ):
+        if verb == ActionVerb.SKIP and self._can_skip(dose, now):
             self._transition(
                 med, dose, DoseState.SKIPPED, now, source=source, user_id=user_id
             )
@@ -930,6 +930,24 @@ class MedTrackManager:
     def _in_early_window(self, dose: Dose, now: datetime) -> bool:
         window = timedelta(minutes=self.settings.early_take_window)
         return now < dose.scheduled_at <= now + window
+
+    def _can_take(self, dose: Dose, now: datetime) -> bool:
+        """Taken is accepted: running, missed (taken late, within 24 h), or
+        upcoming inside the early-take window."""
+        if dose.is_active:
+            return True
+        if dose.state == DoseState.MISSED:
+            return now < dose.scheduled_at + DOSE_RETENTION
+        return dose.state == DoseState.SCHEDULED and self._in_early_window(dose, now)
+
+    def _can_skip(self, dose: Dose, now: datetime) -> bool:
+        """Skip is accepted: running, or upcoming inside the early-take window."""
+        return dose.is_active or (
+            dose.state == DoseState.SCHEDULED and self._in_early_window(dose, now)
+        )
+
+    def _snoozes_left(self, dose: Dose) -> int:
+        return max(self.settings.max_snoozes - dose.snoozes_used, 0)
 
     def find_dose(self, subentry_id: str, *, early: bool) -> Dose | None:
         """The dose a button acts on: the running one, else (if `early`) the
@@ -1203,6 +1221,24 @@ class MedTrackManager:
                 return index
         return None
 
+    def _undo_stock_change(self, sid: str, index: int) -> float | None:
+        """How much undoing history record `index` changes the stock: + for a
+        dose, - for a refill (never below 0). None when stock is untouched:
+        not tracked, nothing used, or corrected (set_stock) after it."""
+        record = self.history[index]
+        state = self.stock_state.get(sid)
+        delta = record.get("amount") or 0.0
+        if not delta or state is None or state.stock is None:
+            return None
+        if any(
+            later["medication_id"] == sid and later["type"] == "stock_set"
+            for later in self.history[index + 1 :]
+        ):
+            return None
+        if record["type"] == "refill":
+            delta = -delta
+        return _round(max(state.stock + delta, 0.0) - state.stock) or None
+
     async def async_undo_last(
         self, sid: str, *, user_id: str | None, source: Source
     ) -> None:
@@ -1225,18 +1261,11 @@ class MedTrackManager:
             record = self.history[index]
             fields: dict[str, Any] = {"undone_id": record["id"]}
 
-            delta = record.get("amount") or 0.0
-            if record["type"] == "refill":
-                delta = -delta
-            corrected_later = any(
-                later["medication_id"] == sid and later["type"] == "stock_set"
-                for later in self.history[index + 1 :]
-            )
+            change = self._undo_stock_change(sid, index)
             state = self.stock_state.get(sid)
-            if delta and not corrected_later and state and state.stock is not None:
-                new_stock = _round(max(state.stock + delta, 0.0))
-                fields["amount"] = _round(new_stock - state.stock)
-                state.stock = new_stock
+            if change and state and state.stock is not None:
+                fields["amount"] = change
+                state.stock = _round(state.stock + change)
 
             if record["type"] == "dose":
                 fields["dose_id"] = record["dose_id"]
@@ -1356,6 +1385,144 @@ class MedTrackManager:
             med = self.medications.get(record["medication_id"])
             records.append({**record, "medication": med.name if med else None})
         return records
+
+    # --- Day view (the dashboard card) ------------------------------------------------
+
+    def day_view(self) -> dict[str, Any]:
+        """Everything the "MedTrack Today" card shows, computed here so the
+        card only renders it. Times are ISO 8601 in Home Assistant's time
+        zone; the card shows their HH:MM part as is.
+
+        `refresh_at` is the next moment the result changes without any entity
+        changing (an early-take window opening, "Taken late" or Undo expiring,
+        midnight); the card fetches again then.
+        """
+        now = dt_util.utcnow()
+        start, end = local_day_bounds(now, self.tz)
+        dev_reg = dr.async_get(self.hass)
+        undo_ids: dict[str, dict[str, Any]] = {}
+        refresh = [end]
+
+        medications = []
+        for sid, med in sorted(
+            self.medications.items(), key=lambda item: item[1].name.casefold()
+        ):
+            device = dev_reg.async_get_device_by_identifier(
+                (DOMAIN, sid), self.entry.entry_id
+            )
+            undo = None
+            if (index := self._undo_candidate(sid, now)) is not None:
+                record = self.history[index]
+                undo = {
+                    "record_id": record["id"],
+                    "type": record["type"],
+                    "label": self.last_action(sid),
+                    "at": _local_iso(datetime.fromisoformat(record["at"])),
+                    "dose_id": record.get("dose_id"),
+                    "stock_change": self._undo_stock_change(sid, index),
+                }
+                undo_ids[record["id"]] = undo
+                refresh.append(datetime.fromisoformat(record["at"]) + UNDO_WINDOW)
+            medications.append(
+                {
+                    "medication_id": sid,
+                    "name": med.name,
+                    "device_id": device.id if device else None,
+                    "active": med.active,
+                    "dose_amount": med.dose_amount,
+                    "unit": med.unit,
+                    "precision": display_precision(med.dose_amount),
+                    "instructions": med.instructions,
+                    "tracks_stock": med.tracks_stock,
+                    "stock": self.stock(sid),
+                    "low_stock_threshold": med.low_stock_threshold,
+                    "low_stock": self.low_stock(sid),
+                    "days_remaining": self.days_remaining(sid),
+                    "refill_amount": med.refill_amount,
+                    "undo": undo,
+                }
+            )
+
+        undo_dose_ids = {
+            undo["dose_id"] for undo in undo_ids.values() if undo["type"] == "dose"
+        }
+        window = timedelta(minutes=self.settings.early_take_window)
+        doses = []
+        for dose in sorted(
+            (
+                d
+                for d in self.doses.values()
+                if start <= d.scheduled_at < end and d.subentry_id in self.medications
+            ),
+            key=lambda d: (d.scheduled_at, self.medications[d.subentry_id].name),
+        ):
+            med = self.medications[dose.subentry_id]
+            if dose.state == DoseState.SCHEDULED:
+                refresh.extend((dose.scheduled_at - window, dose.scheduled_at))
+            elif dose.state == DoseState.MISSED:
+                refresh.append(dose.scheduled_at + DOSE_RETENTION)
+            elif dose.is_active and dose.next_action_at is not None:
+                refresh.append(dose.next_action_at)
+            doses.append(
+                {
+                    "dose_id": dose.dose_id,
+                    "medication_id": dose.subentry_id,
+                    "medication": med.name,
+                    "time": dose.local_time,
+                    "scheduled_at": _local_iso(dose.scheduled_at),
+                    "dose_amount": med.dose_amount,
+                    "unit": med.unit,
+                    "instructions": med.instructions,
+                    "state": dose.state.value,
+                    "taken_at": _local_iso(dose.resolved_at)
+                    if dose.state in TAKEN_STATES
+                    else None,
+                    "resolved_at": _local_iso(dose.resolved_at),
+                    "reminders_sent": dose.reminders_sent,
+                    "max_reminders": self._max_reminders(med),
+                    "snoozes_used": dose.snoozes_used,
+                    "snoozes_left": self._snoozes_left(dose),
+                    "next_reminder_at": _local_iso(dose.next_action_at)
+                    if dose.is_active
+                    else None,
+                    "can_take": self._can_take(dose, now),
+                    "can_skip": self._can_skip(dose, now),
+                    "can_snooze": dose.is_active and self._snoozes_left(dose) > 0,
+                    "can_undo": dose.dose_id in undo_dose_ids
+                    and dose.state in UNDOABLE_STATES,
+                }
+            )
+
+        undone = {r.get("undone_id") for r in self.history if r["type"] == "undo"}
+        refills = [
+            {
+                "record_id": record["id"],
+                "medication_id": record["medication_id"],
+                "medication": self.medications[record["medication_id"]].name,
+                "at": _local_iso(at),
+                "amount": record["amount"],
+                "can_undo": record["id"] in undo_ids,
+            }
+            for record in self.history
+            if record["type"] == "refill"
+            and record["id"] not in undone
+            and record["medication_id"] in self.medications
+            and start <= (at := datetime.fromisoformat(record["at"])) < end
+        ]
+
+        return {
+            "entry_id": self.entry.entry_id,
+            "hub": self.entry.title,
+            "date": start.astimezone(self.tz).date().isoformat(),
+            "now": _local_iso(now),
+            "refresh_at": _local_iso(min(t for t in refresh if t > now)),
+            "taken": sum(1 for d in doses if d["state"] in TAKEN_STATES),
+            "total": len(doses),
+            "snooze_length": self.settings.snooze_length,
+            "medications": medications,
+            "doses": doses,
+            "refills": refills,
+        }
 
     # --- Values read by entities -----------------------------------------------------
 

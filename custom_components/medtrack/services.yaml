@@ -80,3 +80,11 @@ get_history:
       required: false
       selector:
         datetime:
+
+get_day:
+  fields:
+    config_entry_id:
+      required: false
+      selector:
+        config_entry:
+          integration: medtrack

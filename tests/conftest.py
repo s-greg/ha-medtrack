@@ -236,13 +236,13 @@ async def press(hass: HomeAssistant, entity_id: str) -> None:
 async def medtrack(
     hass: HomeAssistant, service: str, data: dict[str, Any] | None = None
 ) -> Any:
-    """Call a MedTrack action; returns the response of get_history."""
+    """Call a MedTrack action; returns the response of get_history / get_day."""
     return await hass.services.async_call(
         DOMAIN,
         service,
         data or {},
         blocking=True,
-        return_response=service == "get_history",
+        return_response=service in ("get_history", "get_day"),
     )
 
 

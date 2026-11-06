@@ -30,12 +30,14 @@ import probatio
 
 from .const import (
     ATTR_AMOUNT,
+    ATTR_CONFIG_ENTRY_ID,
     ATTR_DOSE_ID,
     ATTR_END,
     ATTR_MINUTES,
     ATTR_START,
     DOMAIN,
     RANGE_SNOOZE_LENGTH,
+    SERVICE_GET_DAY,
     SERVICE_GET_HISTORY,
     SERVICE_REFILL,
     SERVICE_SET_STOCK,
@@ -90,6 +92,8 @@ HISTORY_SCHEMA = probatio.Schema(
         probatio.Optional(ATTR_END): cv.datetime,
     }
 )
+
+DAY_SCHEMA = probatio.Schema({probatio.Optional(ATTR_CONFIG_ENTRY_ID): cv.string})
 
 type Target = tuple[MedTrackManager, str]
 
@@ -255,6 +259,18 @@ async def _get_history(call: ServiceCall) -> ServiceResponse:
     return {"records": records}
 
 
+async def _get_day(call: ServiceCall) -> ServiceResponse:
+    """Today's doses of one hub, as shown by the MedTrack Today card."""
+    managers = _managers(call.hass)
+    if entry_id := call.data.get(ATTR_CONFIG_ENTRY_ID):
+        if entry_id not in managers:
+            raise _error("unknown_hub")
+        return managers[entry_id].day_view()
+    if len(managers) != 1:
+        raise _error("single_hub")
+    return next(iter(managers.values())).day_view()
+
+
 @callback
 def async_setup_services(hass: HomeAssistant) -> None:
     """Register the MedTrack actions (once, for all hubs)."""
@@ -286,5 +302,12 @@ def async_setup_services(hass: HomeAssistant) -> None:
         SERVICE_GET_HISTORY,
         _get_history,
         schema=HISTORY_SCHEMA,
+        supports_response=SupportsResponse.ONLY,
+    )
+    register(
+        DOMAIN,
+        SERVICE_GET_DAY,
+        _get_day,
+        schema=DAY_SCHEMA,
         supports_response=SupportsResponse.ONLY,
     )
