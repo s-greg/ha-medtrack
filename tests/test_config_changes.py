@@ -6,7 +6,7 @@ import asyncio
 from typing import Any
 
 from freezegun.api import FrozenDateTimeFactory
-from homeassistant.config_entries import SOURCE_USER, ConfigSubentry
+from homeassistant.config_entries import SOURCE_RECONFIGURE, SOURCE_USER, ConfigSubentry
 from homeassistant.const import ATTR_UNIT_OF_MEASUREMENT, STATE_UNAVAILABLE
 from homeassistant.core import Event, HomeAssistant, ServiceCall
 from homeassistant.data_entry_flow import FlowResultType
@@ -215,11 +215,12 @@ async def test_unload_during_send_leaves_no_running_copy(
 # --- Bug 3: default refill amount is optional ----------------------------------------
 
 
-@pytest.mark.parametrize("empty", ["omitted", None, ""])
+@pytest.mark.parametrize("empty", ["omitted", None, "", 0, 0.0])
 async def test_refill_amount_may_be_empty(
     hass: HomeAssistant, hub_entry: MockConfigEntry, notify_calls: Calls, empty
 ) -> None:
-    """An empty refill (left out, null or "") is accepted and not stored."""
+    """An empty refill (left out, null, "" or the 0 a cleared box sends) is
+    accepted and not stored: no default refill amount."""
     assert await hass.config_entries.async_setup(hub_entry.entry_id)
     await hass.async_block_till_done()
     user_input: dict[str, Any] = {
@@ -247,6 +248,33 @@ async def test_refill_amount_may_be_empty(
     assert CONF_REFILL_AMOUNT not in subentry.data
     assert "low_stock_threshold" not in subentry.data
     assert CONF_REREMIND_INTERVAL not in subentry.data
+
+
+async def test_clearing_refill_in_edit_form_removes_default(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory, notify_calls: Calls
+) -> None:
+    """Editing: a cleared refill box (0) removes the default; a threshold of 0
+    is kept as a real threshold."""
+    entry, sid = await _start(hass, freezer)
+    flow = await hass.config_entries.subentries.async_init(
+        (entry.entry_id, SUBENTRY_MEDICATION),
+        context={"source": SOURCE_RECONFIGURE, "subentry_id": sid},
+    )
+    data = {k: v for k, v in entry.subentries[sid].data.items()}
+    result = await hass.config_entries.subentries.async_configure(
+        flow["flow_id"],
+        {
+            "name": "Metformin",
+            **data,
+            CONF_REFILL_AMOUNT: 0,
+            "low_stock_threshold": 0,
+        },
+    )
+    await hass.async_block_till_done()
+    assert result["type"] is FlowResultType.ABORT
+    assert CONF_REFILL_AMOUNT not in entry.subentries[sid].data
+    assert entry.subentries[sid].data["low_stock_threshold"] == 0.0
+    assert hass.states.get("number.metformin_refill_amount").state == "unknown"
 
 
 # --- Improvement 4: tapping a reminder opens a page -----------------------------------
@@ -358,7 +386,7 @@ async def test_unit_change_recreates_only_that_medication(
     assert stock.attributes[ATTR_UNIT_OF_MEASUREMENT] == "capsule"
     assert stock.state == "30.0"
     assert hass.states.get("button.metformin_take") is not None
-    assert len(entry.runtime_data._entities[sid]) == 11
+    assert len(entry.runtime_data._entities[sid]) == 13
 
 
 # --- Improvement 6: pausing records the running dose ----------------------------------

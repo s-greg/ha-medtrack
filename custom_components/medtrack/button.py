@@ -42,6 +42,13 @@ BUTTONS: tuple[MedTrackButtonDescription, ...] = (
         press_fn=lambda m, sid, uid: m.async_snooze(sid, user_id=uid),
     ),
     MedTrackButtonDescription(
+        key="undo_last",
+        translation_key="undo_last",
+        press_fn=lambda m, sid, uid: m.async_undo_last(
+            sid, user_id=uid, source=Source.BUTTON
+        ),
+    ),
+    MedTrackButtonDescription(
         key="refill",
         translation_key="refill",
         press_fn=lambda m, sid, uid: m.async_refill(

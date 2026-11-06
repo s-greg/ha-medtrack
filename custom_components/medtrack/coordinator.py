@@ -55,6 +55,7 @@ from .models import Dose, HubSettings, Medication, display_precision
 from .notifications import (
     Notifier,
     dose_tag,
+    format_amount,
     low_stock_payload,
     low_stock_tag,
     missed_payload,
@@ -88,6 +89,14 @@ def signal_update(entry_id: str) -> str:
     """Dispatcher signal fired when any MedTrack state of this entry changes."""
     return f"{DOMAIN}_{entry_id}_update"
 
+
+# The "Last action" sensor: what the Undo button would revert.
+LAST_ACTION_NONE = "None"
+LAST_ACTION_LABELS = {
+    DoseState.TAKEN: "Taken",
+    DoseState.TAKEN_LATE: "Taken late",
+    DoseState.SKIPPED: "Skipped",
+}
 
 # Dose results undo_last can revert.
 UNDOABLE_STATES = frozenset({*TAKEN_STATES, DoseState.SKIPPED})
@@ -1298,6 +1307,36 @@ class MedTrackManager:
                 "Removed %d old history records", len(self.history) - len(kept)
             )
             self.history = kept
+
+    def last_action(self, subentry_id: str) -> str:
+        """What undo_last would revert, e.g. "Taken 10:28", "Refilled +30", "None".
+
+        The time is when the action happened, in local time.
+        """
+        record = self._last_action_record(subentry_id)
+        if record is None:
+            return LAST_ACTION_NONE
+        if record["type"] == "refill":
+            return f"Refilled +{format_amount(record['amount'])}"
+        at = dt_util.as_local(datetime.fromisoformat(record["at"]))
+        return f"{LAST_ACTION_LABELS[record['state']]} {at:%H:%M}"
+
+    def last_action_attributes(self, subentry_id: str) -> dict[str, Any]:
+        """Details of the record the Undo button would revert."""
+        record = self._last_action_record(subentry_id)
+        if record is None:
+            return {"record_id": None}
+        return {
+            "record_id": record["id"],
+            "type": record["type"],
+            "at": record["at"],
+            "dose_id": record.get("dose_id"),
+            "amount": record.get("amount"),
+        }
+
+    def _last_action_record(self, subentry_id: str) -> dict[str, Any] | None:
+        index = self._undo_candidate(subentry_id, dt_util.utcnow())
+        return None if index is None else self.history[index]
 
     def history_records(
         self,

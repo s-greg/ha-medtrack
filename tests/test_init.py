@@ -24,6 +24,8 @@ MEDICATION_ENTITIES = [
     "button.metformin_skip",
     "button.metformin_snooze",
     "button.metformin_refill",
+    "button.metformin_undo_last",
+    "sensor.metformin_last_action",
     "number.metformin_refill_amount",
 ]
 
@@ -75,8 +77,10 @@ async def test_setup_creates_devices_and_entities(
     # 30 tablets, 2 tablets twice a day.
     assert hass.states.get("sensor.metformin_days_remaining").state == "7.5"
     refill = hass.states.get("number.metformin_refill_amount")
-    assert refill.state == "60.0"
+    assert refill.state == "60"
     assert refill.attributes["mode"] == "box"
+    assert refill.attributes["step"] == 1
+    assert hass.states.get("sensor.metformin_last_action").state == "None"
     assert refill.attributes[ATTR_UNIT_OF_MEASUREMENT] == "tablet"
 
 

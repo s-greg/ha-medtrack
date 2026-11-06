@@ -62,12 +62,23 @@ class RefillAmountNumber(MedicationEntity, NumberEntity):
         super().__init__(manager, subentry_id, description)
         medication = manager.medications[subentry_id]
         self._attr_native_unit_of_measurement = medication.unit
-        self._attr_native_step = 10 ** -display_precision(medication.dose_amount)
+        # Whole numbers unless the dose has decimals (same as the Stock sensor).
+        precision = display_precision(medication.dose_amount)
+        self._attr_native_step = 10**-precision
+        self._precision = precision
 
     @property
-    def native_value(self) -> float | None:
-        """The amount the next refill adds."""
-        return self._manager.refill_input.get(self._subentry_id)
+    def native_value(self) -> float | int | None:
+        """The amount the next refill adds.
+
+        Number entities have no display precision, so the value itself is
+        rounded: 1.0 is reported as 1 (shown "1 tablet", not "1.0 tablet").
+        """
+        value = self._manager.refill_input.get(self._subentry_id)
+        if value is None:
+            return None
+        value = round(value, self._precision)
+        return int(value) if self._precision == 0 else value
 
     async def async_set_native_value(self, value: float) -> None:
         """Remember the typed amount for the Refill button."""

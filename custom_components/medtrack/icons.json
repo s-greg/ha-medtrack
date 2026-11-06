@@ -29,6 +29,9 @@
       },
       "doses_taken_today": {
         "default": "mdi:check-all"
+      },
+      "last_action": {
+        "default": "mdi:history"
       }
     },
     "binary_sensor": {
@@ -51,6 +54,9 @@
       },
       "refill": {
         "default": "mdi:package-variant-closed-plus"
+      },
+      "undo_last": {
+        "default": "mdi:undo"
       }
     },
     "number": {

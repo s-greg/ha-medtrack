@@ -75,7 +75,7 @@ These were checked against the Companion App docs (companion.home-assistant.io) 
 | Instructions | text, optional | e.g. "with food"; shown in the notification body |
 | Current stock | float ≥ 0, optional | Empty = stock tracking off for this medication (no decrement, no low-stock alerts, no Stock / Days remaining / Low stock entities). Filling it in later turns tracking on. In reconfigure the field shows the live stock; changing it is a logged stock correction (same as `set_stock`), not a reset |
 | Low-stock threshold | float ≥ 0, optional | Alert when stock ≤ threshold. Empty = track stock but never alert |
-| Default refill amount | float, optional | Pre-fills the Refill amount entity, and is the default of `medtrack.refill` and the low-stock "Refilled" action |
+| Default refill amount | float, optional; empty or 0 = no default (a cleared number box submits 0) | Pre-fills the Refill amount entity, and is the default of `medtrack.refill` and the low-stock "Refilled" action |
 | Critical mode | select | `never` / `final_reminder` / `all_reminders` |
 | Overrides | optional | Re-remind interval, max reminders (fall back to hub values) |
 | Active | bool | Paused medications send nothing. Pausing while a dose runs records it as `skipped` (`source: system`, `reason: paused`) and clears its notification |
@@ -164,7 +164,9 @@ data:
 | button | `take` | Confirms the pending dose, or an upcoming one within the early-take window; otherwise shows an error |
 | button | `skip` | Skips the pending dose, or an upcoming one within the early-take window; otherwise shows an error |
 | button | `snooze` | Snoozes the pending dose; shows an error when there is none or no snoozes are left |
-| number | `refill_amount` | Box mode, unit = medication unit; starts at (and after each refill returns to) the default refill amount, empty without one. Not persisted. Only with stock tracking |
+| sensor | `last_action` | What Undo would revert: "Taken HH:MM", "Taken late HH:MM", "Skipped HH:MM" (local time of the action), "Refilled +N", or "None". Attributes: record ID, type, at, dose ID, amount |
+| button | `undo_last` | Same as `medtrack.undo_last`; error when there is nothing to undo |
+| number | `refill_amount` | Box mode, unit = medication unit, whole numbers unless the dose has decimals (like Stock); starts at (and after each refill returns to) the default refill amount, empty without one. Not persisted. Only with stock tracking |
 | button | `refill` | Adds the Refill amount to stock and logs a refill record (§7). Only with stock tracking |
 
 Hub device (optional): sensor `doses_due_today`, sensor `doses_taken_today`.

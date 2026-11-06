@@ -23,7 +23,6 @@ from custom_components.medtrack.const import (
     CONF_INSTRUCTIONS,
     CONF_MAX_REMINDERS,
     CONF_NOTIFY_TARGETS,
-    CONF_REFILL_AMOUNT,
     CONF_REREMIND_INTERVAL,
     CONF_TIMES,
     DOMAIN,
@@ -202,7 +201,6 @@ async def test_add_medication(hass: HomeAssistant, hub_entry: MockConfigEntry) -
         ({CONF_TIMES: ["25:00"]}, CONF_TIMES, "invalid_time"),
         ({CONF_TIMES: ["08:00:30"]}, CONF_TIMES, "invalid_time"),
         ({CONF_DAYS: []}, CONF_DAYS, "no_days"),
-        ({CONF_REFILL_AMOUNT: 0}, CONF_REFILL_AMOUNT, "invalid_refill"),
     ],
 )
 async def test_add_medication_validation(

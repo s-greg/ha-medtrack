@@ -465,3 +465,61 @@ def test_action_descriptions_match_strings() -> None:
         for field in (service or {}).get("fields", {}):
             assert strings[name]["fields"][field]["name"]
             assert strings[name]["fields"][field]["description"]
+
+
+# --- Undo last button and Last action sensor ----------------------------------------
+
+
+def _last_action(hass: HomeAssistant) -> str:
+    return hass.states.get("sensor.metformin_last_action").state
+
+
+async def test_undo_button_and_last_action(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory, notify_calls: Calls
+) -> None:
+    """Last action shows what Undo would revert; each press steps back."""
+    entry, _ = await start_hub(hass, freezer)
+    assert _last_action(hass) == "None"
+
+    await move_to(hass, freezer, local(2026, 11, 5, 8, 0))
+    await move_to(hass, freezer, local(2026, 11, 5, 8, 3))
+    await press(hass, "button.metformin_skip")
+    assert _last_action(hass) == "Skipped 08:03"
+
+    await move_to(hass, freezer, local(2026, 11, 5, 10, 28))
+    await medtrack(hass, "refill", {"entity_id": STOCK, "amount": 30})
+    assert _last_action(hass) == "Refilled +30"
+    attrs = hass.states.get("sensor.metformin_last_action").attributes
+    assert attrs["type"] == "refill"
+    assert attrs["record_id"] == history(entry)[-1]["id"]
+
+    await move_to(hass, freezer, local(2026, 11, 5, 20, 0))
+    await move_to(hass, freezer, local(2026, 11, 5, 20, 7))
+    await press(hass, "button.metformin_take")
+    assert _last_action(hass) == "Taken 20:07"
+
+    await press(hass, "button.metformin_undo_last")
+    assert _status(hass) == "pending"
+    assert history(entry)[-1]["source"] == "button"
+    assert _last_action(hass) == "Refilled +30"
+    await press(hass, "button.metformin_undo_last")
+    assert _stock(hass) == 30.0
+    assert _last_action(hass) == "Skipped 08:03"
+    await press(hass, "button.metformin_undo_last")
+    assert _last_action(hass) == "None"
+
+    with pytest.raises(ServiceValidationError) as err:
+        await press(hass, "button.metformin_undo_last")
+    assert err.value.translation_key == "nothing_to_undo"
+
+
+async def test_last_action_taken_late(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory, notify_calls: Calls
+) -> None:
+    """A late take is labelled as such."""
+    _, sid = await start_hub(hass, freezer)
+    for minute in (0, 10, 20, 30, 40):
+        await move_to(hass, freezer, local(2026, 11, 5, 8, minute))
+    await move_to(hass, freezer, local(2026, 11, 5, 9, 15))
+    await medtrack(hass, "take_dose", {"dose_id": f"{sid}_20261105_0800"})
+    assert _last_action(hass) == "Taken late 09:15"

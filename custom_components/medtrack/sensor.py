@@ -80,6 +80,12 @@ MEDICATION_SENSORS: tuple[MedicationSensorDescription, ...] = (
         value_fn=lambda m, sid: m.taken_today(sid),
         attrs_fn=lambda m, sid: {"due_today": m.due_today(sid)},
     ),
+    MedicationSensorDescription(
+        key="last_action",
+        translation_key="last_action",
+        value_fn=lambda m, sid: m.last_action(sid),
+        attrs_fn=lambda m, sid: m.last_action_attributes(sid),
+    ),
 )
 
 HUB_SENSORS: tuple[HubSensorDescription, ...] = (

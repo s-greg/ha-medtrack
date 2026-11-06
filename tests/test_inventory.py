@@ -258,7 +258,7 @@ async def test_refill_button_adds_refill_amount_and_resets_it(
     """Type an amount, press Refill: stock grows, a refill is logged and the
     box goes back to the default."""
     entry, _ = await start_hub(hass, freezer)
-    assert hass.states.get("number.metformin_refill_amount").state == "60.0"
+    assert hass.states.get("number.metformin_refill_amount").state == "60"
 
     await hass.services.async_call(
         "number",
@@ -266,11 +266,11 @@ async def test_refill_button_adds_refill_amount_and_resets_it(
         {"entity_id": "number.metformin_refill_amount", "value": 25},
         blocking=True,
     )
-    assert hass.states.get("number.metformin_refill_amount").state == "25.0"
+    assert hass.states.get("number.metformin_refill_amount").state == "25"
     await press(hass, "button.metformin_refill")
 
     assert _stock(hass) == 55.0
-    assert hass.states.get("number.metformin_refill_amount").state == "60.0"
+    assert hass.states.get("number.metformin_refill_amount").state == "60"
     record = history(entry)[-1]
     assert record["type"] == "refill"
     assert record["amount"] == 25.0
@@ -328,7 +328,7 @@ async def test_changed_default_refill_amount_updates_the_box(
     entry, sid = await start_hub(hass, freezer)
     edit_medication(hass, entry, sid, **{CONF_REFILL_AMOUNT: 90.0})
     await hass.async_block_till_done()
-    assert hass.states.get("number.metformin_refill_amount").state == "90.0"
+    assert hass.states.get("number.metformin_refill_amount").state == "90"
 
 
 # --- Early skip (owner addition 2) --------------------------------------------------------
@@ -403,3 +403,17 @@ async def test_second_refilled_tap_ignored_while_still_low(
     assert _stock(hass) == 7.0
     # Still low: no new alert until stock has been above the threshold.
     assert _low_stock_alerts(notify_calls) == []
+
+
+async def test_refill_amount_display_follows_dose_precision(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory, notify_calls: Calls
+) -> None:
+    """Whole numbers for whole doses; decimals when the dose has them."""
+    entry, sid = await start_hub(hass, freezer, {CONF_REFILL_AMOUNT: 1.0})
+    assert hass.states.get("number.metformin_refill_amount").state == "1"
+
+    edit_medication(hass, entry, sid, dose_amount=0.5, **{CONF_REFILL_AMOUNT: 2.5})
+    await hass.async_block_till_done()
+    state = hass.states.get("number.metformin_refill_amount")
+    assert state.state == "2.5"
+    assert state.attributes["step"] == 0.1

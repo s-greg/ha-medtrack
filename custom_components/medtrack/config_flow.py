@@ -406,9 +406,13 @@ def validate_medication(
     if not days:
         errors[CONF_DAYS] = "no_days"
 
+    # The frontend sends 0 for a cleared number box: 0 or empty both mean
+    # "no default refill amount" (unlike the threshold, where 0 is real).
     refill = user_input.get(CONF_REFILL_AMOUNT)
-    if refill is not None and float(refill) <= 0:
+    if refill is not None and float(refill) < 0:
         errors[CONF_REFILL_AMOUNT] = "invalid_refill"
+    if refill is not None and float(refill) <= 0:
+        refill = None
 
     data: dict[str, Any] = {
         CONF_DOSE_AMOUNT: float(user_input.get(CONF_DOSE_AMOUNT, 0)),
