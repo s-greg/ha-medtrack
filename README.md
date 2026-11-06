@@ -1,7 +1,8 @@
 # MedTrack
 
 Medication reminders and stock tracking for Home Assistant, with actionable
-notifications on iPhone through the Home Assistant Companion App.
+notifications on iPhone and iPad (iOS / iPadOS) through the Home Assistant
+Companion App.
 
 - Reminders with **Taken**, **Snooze** and **Skip** buttons, sent to every
   phone you choose. Taking a dose on one phone clears the reminder on the others.
@@ -21,8 +22,9 @@ notifications on iPhone through the Home Assistant Companion App.
 ## Requirements
 
 - Home Assistant 2026.10 or newer.
-- The Home Assistant Companion App on each iPhone, signed in to your Home
-  Assistant with notifications allowed. Android is not supported in this
+- The Home Assistant Companion App on each iPhone or iPad, signed in to your
+  Home Assistant with notifications allowed. An Apple Watch shows the
+  reminders mirrored from the iPhone. Android is not supported in this
   version.
 - [HACS](https://hacs.xyz) to install it.
 
@@ -69,7 +71,7 @@ reminders) and per-medication reminder overrides. Edit a medication with its
 ⋮ menu → **Edit medication**; changing the stock there is logged as a correction.
 
 **Critical alerts** sound even when the phone is muted or in a Focus mode.
-Check that they are allowed on each iPhone: **Settings → Notifications → Home
+Check that they are allowed on each iPhone and iPad: **Settings → Notifications → Home
 Assistant → Critical Alerts**.
 
 ## Entities (per medication)
@@ -121,7 +123,7 @@ response_variable: history
 ## Good to know
 
 - **Remote access is needed for the buttons.** Tapping Taken, Snooze or Skip
-  sends the answer from the iPhone to Home Assistant. Away from home that only
+  sends the answer from the iPhone or iPad to Home Assistant. Away from home that only
   works through Home Assistant Cloud (Nabu Casa), a reverse proxy, or a VPN
   that is connected at that moment. If the phone cannot reach Home Assistant,
   the tap is lost and the reminders keep coming.

@@ -1,6 +1,7 @@
 {
   "domain": "medtrack",
   "name": "MedTrack",
+  "categories": ["health_wellbeing"],
   "codeowners": ["@s-greg"],
   "config_flow": true,
   "dependencies": ["mobile_app"],

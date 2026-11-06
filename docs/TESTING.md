@@ -1,10 +1,10 @@
-# Manual test checklist (iPhone)
+# Manual test checklist (iPhone / iPad)
 
 Run through this after installing a new version, ideally on a test Home
 Assistant first. Use a test medication with times a few minutes ahead.
 
 ## Reminders
-- [ ] Reminder arrives at the set time on every selected iPhone
+- [ ] Reminder arrives at the set time on every selected iPhone and iPad
 - [ ] Re-reminders replace the previous notification instead of stacking, and still play a sound
 - [ ] Tapping the notification itself opens the medication's device page (or your configured page)
 - [ ] "Taken" on one phone clears the notification on the other phone; stock goes down by the dose amount
