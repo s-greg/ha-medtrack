@@ -62,6 +62,7 @@ from .notifications import (
     missed_payload,
     missing_target_issue_id,
     parse_action,
+    plural_unit,
     reminder_payload,
 )
 from .schedule import (
@@ -1436,6 +1437,7 @@ class MedTrackManager:
                     "active": med.active,
                     "dose_amount": med.dose_amount,
                     "unit": med.unit,
+                    "unit_plural": plural_unit(med.unit, 2),
                     "precision": display_precision(med.dose_amount),
                     "instructions": med.instructions,
                     "tracks_stock": med.tracks_stock,

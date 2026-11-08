@@ -10,7 +10,7 @@ from homeassistant.helpers.typing import ConfigType
 from .card import async_register_card
 from .const import DOMAIN
 from .coordinator import MedTrackConfigEntry, MedTrackManager
-from .entity import hub_device_info
+from .entity import HUB_MANUFACTURER, HUB_MODEL
 from .services import async_setup_services
 from .store import create_store
 
@@ -39,8 +39,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: MedTrackConfigEntry) -> 
     entry.runtime_data = manager
 
     # Create the hub device first so medication devices can point to it.
+    # Named fields rather than `**DeviceInfo`: from HA 2026.11 DeviceInfo is
+    # a class, and unpacking it only works through a temporary compat layer.
+    # Keep these in line with entity.hub_device_info (the entities' version).
     dr.async_get(hass).async_get_or_create(
-        config_entry_id=entry.entry_id, **hub_device_info(manager)
+        config_entry_id=entry.entry_id,
+        identifiers={(DOMAIN, entry.entry_id)},
+        name=entry.title,
+        manufacturer=HUB_MANUFACTURER,
+        model=HUB_MODEL,
+        entry_type=dr.DeviceEntryType.SERVICE,
     )
 
     # Medications whose stock tracking was turned off lose those entities.

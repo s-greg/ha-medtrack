@@ -112,6 +112,8 @@ const STYLE = `
   .icon { width: 36px; height: 36px; border-radius: 18px; flex: none; box-sizing: border-box; display: flex; align-items: center; justify-content: center; }
   .icon.done { background: color-mix(in srgb, var(--primary-color) 14%, transparent); color: var(--primary-color); }
   .icon.active { background: color-mix(in srgb, var(--warning-color) 16%, transparent); color: var(--warning-color); }
+  .icon.late { background: color-mix(in srgb, var(--warning-color) 16%, transparent); color: var(--warning-color); }
+  .item.late .sub { color: var(--warning-color); }
   .icon.missed { background: color-mix(in srgb, var(--error-color) 14%, transparent); color: var(--error-color); }
   .icon.skipped { background: var(--secondary-background-color); color: var(--secondary-text-color); }
   .icon.upcoming { border: 2px dashed var(--divider-color); }
@@ -382,7 +384,7 @@ class MedTrackTodayCard extends HTMLElement {
     const value = med.refill_amount == null ? "" : num(med.refill_amount);
     this._openDialog(
       `<h2>${esc(T.refillTitle(med.name))}</h2>
-       <label for="amount">${esc(T.refillLabel(med.unit))}</label>
+       <label for="amount">${esc(T.refillLabel(med.unit_plural || med.unit))}</label>
        <input id="amount" name="amount" type="number" inputmode="decimal" min="0" step="any" value="${esc(value)}">
        ${value === "" ? `<div class="hint">${esc(T.refillHint)}</div>` : ""}
        <div class="buttons"><button type="button" class="btn" data-cancel>${esc(T.btnCancel)}</button>
@@ -495,7 +497,7 @@ class MedTrackTodayCard extends HTMLElement {
         [icon, cls, sub] = ["check", "done", `${d.quantity} \u00b7 ${T.taken(hhmm(d.taken_at))}`];
         break;
       case "taken_late":
-        [icon, cls, sub] = ["check", "done", `${d.quantity} \u00b7 ${T.takenLate(hhmm(d.taken_at))}`];
+        [icon, cls, sub] = ["check", "late", `${d.quantity} \u00b7 ${T.takenLate(hhmm(d.taken_at))}`];
         break;
       case "skipped":
         [icon, cls, sub] = ["skip", "skipped", `${d.quantity} \u00b7 ${T.skipped(hhmm(d.resolved_at))}`];

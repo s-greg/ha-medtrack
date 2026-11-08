@@ -16,6 +16,8 @@ Companion App.
   with a **Refilled** button.
 - Permanent dose history (survives Home Assistant's recorder purge), with
   undo and a `get_history` action for dashboards and automations.
+- A **MedTrack Today** dashboard card with today's doses, Taken, Snooze,
+  Skip, Undo and Refill.
 - Everything is set up in the UI; no YAML.
 
 > [!WARNING]
@@ -30,9 +32,35 @@ Companion App.
   Home Assistant with notifications allowed. An Apple Watch shows the
   reminders mirrored from the iPhone. Android is not supported in this
   version.
-- [HACS](https://hacs.xyz) to install it.
+- To install it: the built-in **Marketplace** (Home Assistant 2026.11 and
+  newer) or [HACS](https://hacs.xyz) (Home Assistant 2026.10).
 
-## Installation (HACS)
+## Installation
+
+### Home Assistant 2026.11 and newer: Marketplace
+
+From 2026.11, HACS is built into Home Assistant as the **Marketplace**
+(**Settings → Marketplace**). MedTrack is installed and updated there as a
+custom repository.
+
+1. Open **Settings → Marketplace** and add
+   `https://github.com/s-greg/ha-medtrack` as a custom repository of type
+   **Integration**.
+2. Open **MedTrack** in the Marketplace and download it.
+3. Restart Home Assistant (**Settings → System → Restart**).
+4. **Settings → Devices & services → Add integration → MedTrack.**
+
+**Connect the Marketplace to GitHub.** For repositories added by link, the
+Marketplace looks for new releases through GitHub (about every 48 hours), and
+only when it has a GitHub connection. Without it, MedTrack updates do not
+appear under **Settings → Updates**.
+
+Already installed MedTrack through HACS? HACS installs, including custom
+repositories, move to the Marketplace automatically on the first start after
+upgrading to 2026.11. Check afterwards that MedTrack is listed under
+**Settings → Marketplace**.
+
+### Home Assistant 2026.10: HACS
 
 1. In Home Assistant, open **HACS**.
 2. Open the menu (⋮, top right) → **Custom repositories**.
@@ -94,9 +122,48 @@ Assistant → Critical Alerts**.
 The hub device has **Doses due today** and **Doses taken today**.
 Tapping a reminder opens the medication's device page, where these buttons are.
 
+## Dashboard card: MedTrack Today
+
+Today's doses as a timeline, with a progress ring ("3 of 5 doses taken
+today") and a banner when a medication runs low.
+
+- A due or snoozed dose shows **Taken**, **Snooze** and **Skip**, and which
+  reminder it is on.
+- Tap an upcoming dose to **Take early** or **Skip** it (within the
+  early-take window).
+- A missed dose offers **Taken late**. Doses taken late get an amber
+  check, so they stand out from doses taken on time.
+- Tap a taken or skipped dose, or a refill, to **Undo** it (with a
+  confirmation).
+- **Refill** opens a dialog prefilled with the default refill amount.
+
+The card updates by itself when anything changes, also when the change came
+from a phone notification.
+
+**Adding it:** edit a dashboard → **Add card** → search for **MedTrack
+Today**. With more than one MedTrack hub, choose the hub in the card editor.
+In YAML:
+
+```yaml
+type: custom:medtrack-today-card
+entry_id: 01JC...   # optional; only needed with more than one hub
+```
+
+The card comes with the integration and is loaded automatically: there is
+nothing to add under **Dashboards → Resources**, and an update replaces it
+together with the integration. The Companion App loads the new version on its
+own, because every version has its own address.
+
+> [!NOTE]
+> A dashboard opened while Home Assistant is still starting can show
+> "Custom element doesn't exist: medtrack-today-card". Reload the page once
+> Home Assistant has finished starting (on iPhone: pull down on the
+> dashboard).
+
 ## Actions
 
-All actions target one medication by its device or one of its entities.
+All actions target one medication by its device or one of its entities,
+except `get_day`.
 
 | Action | Fields |
 |---|---|
@@ -107,6 +174,7 @@ All actions target one medication by its device or one of its entities.
 | `medtrack.set_stock` | `amount` |
 | `medtrack.undo_last` | |
 | `medtrack.get_history` | `start`, `end` (optional); returns the records |
+| `medtrack.get_day` | `config_entry_id` (optional with one hub); returns today's doses, refills and stock, as used by the card |
 
 Events for automations: `medtrack_dose_pending`, `medtrack_dose_snoozed`,
 `medtrack_dose_taken`, `medtrack_dose_taken_late`, `medtrack_dose_skipped`,

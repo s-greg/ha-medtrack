@@ -75,6 +75,7 @@ async def test_day_before_first_dose(
             "active": True,
             "dose_amount": 2.0,
             "unit": "tablet",
+            "unit_plural": "tablets",
             "precision": 0,
             "instructions": "with food",
             "tracks_stock": True,

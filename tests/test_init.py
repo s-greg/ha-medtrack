@@ -49,6 +49,13 @@ async def test_setup_creates_devices_and_entities(
     assert hub_device is not None
     assert med_device is not None
     assert med_device.via_device_id == hub_device.id
+    # The hub device is created in __init__ with named fields; the hub
+    # entities' DeviceInfo must describe the same device (no second device).
+    assert hub_device.name == hub_entry.title
+    assert hub_device.manufacturer == "MedTrack"
+    assert hub_device.model == "Hub"
+    assert hub_device.entry_type is dr.DeviceEntryType.SERVICE
+    assert len(dr.async_entries_for_config_entry(dev_reg, hub_entry.entry_id)) == 2
 
     ent_reg = er.async_get(hass)
     for entity_id in MEDICATION_ENTITIES:

@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.1.0 (2026-11-08)
+
+- New **MedTrack Today** dashboard card: today's doses as a timeline with a
+  progress ring, Taken / Snooze / Skip, Take early, Taken late, Undo (with
+  confirmation), a Refill dialog and a low-stock banner. It ships with the
+  integration and loads automatically; no dashboard resource is needed.
+  Doses taken late are marked with an amber check.
+- New `medtrack.get_day` action that returns today's doses, refills and
+  stock (used by the card, also usable in automations and scripts).
+- Ready for Home Assistant 2026.11: tested on 2026.10 and 2026.11. The hub
+  device is now registered in the form that 2026.11 recommends.
+- From Home Assistant 2026.11, MedTrack is installed and updated through
+  **Settings → Marketplace** (custom repository; updates need the
+  Marketplace's GitHub connection). Existing HACS installs move over
+  automatically.
+
 ## 1.0.0 (2026-11-06)
 
 First release.

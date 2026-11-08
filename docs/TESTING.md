@@ -38,7 +38,9 @@ Assistant first. Use a test medication with times a few minutes ahead.
 - [ ] Banner → refill dialog pre-filled with the default amount; changing it and Refill adds that amount
 - [ ] Running dose: "reminder n of max", Taken / Snooze / Skip; Snooze disappears when no snoozes are left
 - [ ] Upcoming dose: tap shows "Take early" / "Skip" inside the early-take window, otherwise when that window opens
-- [ ] Missed dose: "Taken late" button
+- [ ] Missed dose: "Taken late" button; afterwards the dose has an amber check (on-time doses keep the normal check)
+- [ ] Refill dialog label uses the plural unit, e.g. "Amount (tablets)"
+- [ ] After an HA restart, wait until it has fully started, open the app: the card loads (no "Custom element doesn't exist")
 - [ ] Undo only on the latest taken / skipped / refilled item; the confirmation names the action and the stock change
 - [ ] An action that is not possible shows a message at the bottom of the screen
 - [ ] Acting from a notification or the device page updates the card within a second or two

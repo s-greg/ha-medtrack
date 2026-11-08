@@ -10,14 +10,17 @@ from homeassistant.helpers.entity import Entity, EntityDescription
 from .const import DOMAIN
 from .coordinator import MedTrackManager, signal_update
 
+HUB_MANUFACTURER = "MedTrack"
+HUB_MODEL = "Hub"
+
 
 def hub_device_info(manager: MedTrackManager) -> DeviceInfo:
-    """Device representing the MedTrack hub."""
+    """Device representing the MedTrack hub (also created in __init__.py)."""
     return DeviceInfo(
         identifiers={(DOMAIN, manager.entry.entry_id)},
         name=manager.entry.title,
-        manufacturer="MedTrack",
-        model="Hub",
+        manufacturer=HUB_MANUFACTURER,
+        model=HUB_MODEL,
         entry_type=DeviceEntryType.SERVICE,
     )
 
