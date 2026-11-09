@@ -20,6 +20,12 @@ Companion App.
   Skip, Undo and Refill.
 - Everything is set up in the UI; no YAML.
 
+## Dashboard card
+
+| Light theme | Dark theme |
+|---|---|
+| <img src="docs/images/card-light.png" alt="MedTrack Today card" width="300"> | <img src="docs/images/card-dark.png" alt="MedTrack Today card in dark theme" width="300"> |
+
 > [!WARNING]
 > Do not rely on MedTrack as your only reminder for critical medication. If
 > Home Assistant, your internet connection or Apple's push service is down at
@@ -136,6 +142,8 @@ today") and a banner when a medication runs low.
 - Tap a taken or skipped dose, or a refill, to **Undo** it (with a
   confirmation).
 - **Refill** opens a dialog prefilled with the default refill amount.
+
+<img src="docs/images/card-refill.png" alt="Refill dialog prefilled with the default amount" width="300">
 
 The card updates by itself when anything changes, also when the change came
 from a phone notification.
