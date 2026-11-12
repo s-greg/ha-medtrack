@@ -35,6 +35,9 @@ const T = {
   due: (n, max) => `Due \u00b7 reminder ${n} of ${max}`,
   snoozed: (time, n, max) => `Snoozed until ${time} \u00b7 reminder ${n} of ${max}`,
   takeFrom: (time) => `Can be taken or skipped from ${time}`,
+  waitingHome: "Waiting until you\u2019re home",
+  remindBy: (time) => `Reminder at ${time} at the latest`,
+  yesterday: "yesterday",
   refilled: (quantity) => `Refilled +${quantity}`,
   btnTaken: "Taken",
   btnTakenLate: "Taken late",
@@ -64,6 +67,7 @@ const ICONS = {
   alert:
     '<path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/>',
   plus: '<path d="M12 5v14"/><path d="M5 12h14"/>',
+  home: '<path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V20h14V9.5"/><path d="M10 20v-6h4v6"/>',
 };
 
 const svg = (name, size = 18) =>
@@ -453,20 +457,26 @@ class MedTrackTodayCard extends HTMLElement {
       return `<div class="empty"><strong>${esc(T.noMedications)}</strong><span>${esc(T.noMedicationsHint)}</span></div>`;
     }
     const entries = [
-      ...day.doses.map((d) => ({ time: d.time, html: this._doseItem(d), active: d.state === "pending" || d.state === "snoozed" })),
-      ...day.refills.map((r) => ({ time: hhmm(r.at), html: this._refillItem(r), active: false })),
+      // A dose from yesterday that is still running (earlier_day) comes first.
+      ...day.doses.map((d) => ({
+        key: `${d.earlier_day ? 0 : 1}${d.time}`,
+        time: d.time,
+        html: this._doseItem(d),
+        active: d.state === "pending" || d.state === "snoozed",
+      })),
+      ...day.refills.map((r) => ({ key: `1${hhmm(r.at)}`, time: hhmm(r.at), html: this._refillItem(r), active: false })),
     ];
     if (!entries.length) {
       return `<div class="empty"><strong>${esc(T.noDoses)}</strong><span>${esc(T.noDosesHint)}</span></div>`;
     }
-    entries.sort((a, b) => a.time.localeCompare(b.time));
+    entries.sort((a, b) => a.key.localeCompare(b.key));
     const groups = [];
     for (const entry of entries) {
       const last = groups[groups.length - 1];
-      if (last && last.time === entry.time) {
+      if (last && last.key === entry.key) {
         last.items.push(entry.html);
         last.active ||= entry.active;
-      } else groups.push({ time: entry.time, items: [entry.html], active: entry.active });
+      } else groups.push({ key: entry.key, time: entry.time, items: [entry.html], active: entry.active });
     }
     return `<div class="timeline">${groups
       .map(
@@ -508,12 +518,12 @@ class MedTrackTodayCard extends HTMLElement {
         break;
       case "pending":
       case "snoozed":
-        [icon, cls] = ["clock", "active"];
-        sub =
-          d.state === "pending"
-            ? T.due(reminder, d.max_reminders)
-            : T.snoozed(hhmm(d.next_reminder_at), reminder, d.max_reminders);
-        details.push(d.quantity);
+        [icon, cls] = [d.waiting_for_home ? "home" : "clock", "active"];
+        if (d.waiting_for_home) sub = T.waitingHome;
+        else if (d.state === "pending") sub = T.due(reminder, d.max_reminders);
+        else sub = T.snoozed(hhmm(d.next_reminder_at), reminder, d.max_reminders);
+        details.push(d.earlier_day ? `${d.quantity} \u00b7 ${T.yesterday}` : d.quantity);
+        if (d.waiting_for_home && d.next_reminder_at) details.push(T.remindBy(hhmm(d.next_reminder_at)));
         if (d.can_take) buttons.push(this._button(T.btnTaken, "take", doseAttr, true));
         if (d.can_snooze) buttons.push(this._button(T.btnSnooze, "snooze", medAttr));
         if (d.can_skip) buttons.push(this._button(T.btnSkip, "skip", doseAttr));

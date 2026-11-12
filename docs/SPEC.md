@@ -62,6 +62,9 @@ These were checked against the Companion App docs (companion.home-assistant.io) 
 | Critical alert volume | float (0.1–1.0) | 1.0 | Volume in the critical `sound` block (§6) |
 | History retention | days (0 = forever) | 0 | |
 | Page to open when tapping a reminder | text (optional) | empty | Path (`/...`) or full URL; empty = the medication's device page (§6) |
+| Person | `person` entity (optional) | empty | For "Remind me at home" (§5.1); empty = feature off. Redacted in diagnostics |
+| Offer "Remind me at home" | bool | true | |
+| Remind anyway after | hours (1–24) | 4 | Longest a dose waits for the person to get home |
 
 ### 4.2 Medication (subentry flow + reconfigure)
 
@@ -99,7 +102,22 @@ States: `scheduled → pending → (snoozed ⇄ pending) → taken | taken_late 
 - **Idempotency:** an action for an already-resolved dose (for example, tapped on a second phone after the first) is ignored and just triggers a clear on all targets.
 - **Pause / inactive medication:** no doses generated.
 
-Each transition fires a bus event `medtrack_dose_<state>` with `{medication, dose_id, scheduled_at, at, user_id}` for automations and the logbook, and appends a history record.
+Each transition fires a bus event `medtrack_dose_<state>` with `{medication, dose_id, scheduled_at, at, user_id}` for automations and the logbook, and appends a history record. Snoozed also carries `until` (ISO time, or `"home"`), in the event and the record.
+
+### 5.1 "Remind me at home" (v1.2.0, GitHub issue #1)
+
+- **Offered** on a reminder (action `MEDTRACK_HOME_<dose_id>`, title "Remind me at home", between Snooze and Skip) only when: a Person is set, "Offer 'Remind me at home'" is on, the dose has not used a hold yet, and the person's state at send time is not `home`, `unknown` or `unavailable`. Checked per reminder.
+- **Tapped while away:** the dose becomes `snoozed` with `until: "home"` (event, history record, status attribute); it does not use a snooze. The notification is cleared on all targets. No re-reminders and no missed escalation; the next action is the "remind anyway" time (now + Remind anyway after).
+- **Tapped while not away** (home, unknown, unavailable, or the feature turned off since): the reminder is re-sent immediately; nothing is held or recorded.
+- **Person's state changes to `home`** (from anything else): every held dose is reminded now, with the normal buttons (no "home" button: once per dose). The reminder repeats its current number, as after a snooze; normal re-reminders and missed follow.
+- **Remind anyway after passed:** same as arriving home.
+- **Taken / skipped elsewhere** (card, device page, action, other phone): the normal transition ends the hold.
+- **Next dose of the same medication starts:** the held dose becomes `missed` with the "Missed" notification (§5 supersede rule; owner decision).
+- **Midnight:** no effect; a hold ends only by the events above.
+- **Restart:** the hold is persisted with the dose (`until_home`, `home_hold_used`). On start, held doses are released at once if the person is home or the feature is off; otherwise they stay held. If the remind-anyway time passed while HA was down, normal recovery (§10) applies: reminded now if still inside the reminder window, else missed silently. `person` is an after-dependency so its restored state is known.
+- Removing the person or turning the option off releases holds immediately.
+- Rate budget (§6): +1 push per dose while the feature is on.
+- The person's state and location are never logged.
 
 ## 6. Notifications
 
@@ -243,6 +261,6 @@ LICENSE
 Decided with the owner (design A, `docs/design/A-today-timeline.html`; read for layout, hierarchy and colors, not as runnable code):
 
 - One card shows today's doses of all medications of one hub: header with date and an "X of Y taken today" ring; a low-stock banner per medication at or below its threshold (tap: refill dialog pre-filled with the default refill amount, editable, confirm calls `medtrack.refill`); a timeline sorted by time (taken / taken late with the time, skipped, missed with "Taken late" while allowed, the running dose expanded with "reminder n of max", Taken / Snooze (only with snoozes left) / Skip; upcoming doses offer Take early / Skip inside the early-take window). Undo is offered only on the item `undo_last` would revert, always after a confirmation ("Undo 'Taken 10:28' for Vitamin D? Stock +1"). Errors show as a toast; an empty state when there are no doses today.
-- The card is shipped inside the integration (no separate HACS repo): MedTrack serves the JS file and loads it in the frontend automatically, cache-busted with the version number. Known limit (found in 6c): HA renders the list of extra modules into the page when the page is loaded, and serves pages before custom integrations are set up; a page opened while HA is still starting therefore never loads the card until it is reloaded. Doses taken late show an amber check; the refill dialog uses the plural unit (`unit_plural` in `get_day`).
+- The card is shipped inside the integration (no separate HACS repo): MedTrack serves the JS file and loads it in the frontend automatically, cache-busted with the version number. Known limit (found in 6c): HA renders the list of extra modules into the page when the page is loaded, and serves pages before custom integrations are set up; a page opened while HA is still starting therefore never loads the card until it is reloaded. Doses taken late show an amber check; the refill dialog uses the plural unit (`unit_plural` in `get_day`). v1.2.0: a dose waiting for home (`waiting_for_home`) shows "Waiting until you're home", the remind-anyway time, and Taken / Skip (`can_snooze` false); a dose from an earlier day that is still running is listed first (`earlier_day`, not counted in taken / total).
 - Plain JavaScript web component, no build step; visual editor (choose the hub), card picker entry, grid sizing; HA theme variables (light and dark); tap targets at least 44 px; works at iPhone width.
 - The card stays thin: `medtrack.get_day` (§9) computes everything; the card fetches it on load, whenever a MedTrack entity changes, and at the returned `refresh_at`.

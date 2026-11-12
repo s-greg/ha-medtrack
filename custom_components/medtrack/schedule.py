@@ -101,16 +101,20 @@ def local_day_bounds(moment: datetime, tz: tzinfo) -> tuple[datetime, datetime]:
 
 
 def daily_push_budget(
-    medications: list[Medication], max_reminders: int, max_snoozes: int
+    medications: list[Medication],
+    max_reminders: int,
+    max_snoozes: int,
+    home_hold: bool = False,
 ) -> int:
     """Worst-case pushes per phone per day (spec §6 rate budget).
 
-    Per dose: every reminder, a re-send after each snooze, and the missed alert.
+    Per dose: every reminder, a re-send after each snooze, the missed alert,
+    and (with "Remind me at home") one re-send after the hold.
     """
     total = 0
     for med in medications:
         if not med.active:
             continue
         reminders = med.max_reminders or max_reminders
-        total += len(med.times) * (reminders + max_snoozes + 1)
+        total += len(med.times) * (reminders + max_snoozes + 1 + int(home_hold))
     return total

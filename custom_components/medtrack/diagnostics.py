@@ -13,10 +13,10 @@ from typing import Any
 from homeassistant.components.diagnostics import async_redact_data
 from homeassistant.core import HomeAssistant
 
-from .const import CONF_NOTIFY_TARGETS, DIAGNOSTICS_HISTORY, DoseState
+from .const import CONF_NOTIFY_TARGETS, CONF_PERSON, DIAGNOSTICS_HISTORY, DoseState
 from .coordinator import MedTrackConfigEntry
 
-TO_REDACT = {CONF_NOTIFY_TARGETS, "user_id"}
+TO_REDACT = {CONF_NOTIFY_TARGETS, CONF_PERSON, "user_id"}
 
 
 async def async_get_config_entry_diagnostics(

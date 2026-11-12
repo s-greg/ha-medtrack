@@ -21,6 +21,8 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.data_entry_flow import section
 from homeassistant.helpers.selector import (
     BooleanSelector,
+    EntitySelector,
+    EntitySelectorConfig,
     NumberSelector,
     NumberSelectorConfig,
     NumberSelectorMode,
@@ -44,12 +46,15 @@ from .const import (
     CONF_DOSE_AMOUNT,
     CONF_EARLY_TAKE_WINDOW,
     CONF_HISTORY_RETENTION,
+    CONF_HOME_FALLBACK,
+    CONF_HOME_REMINDER,
     CONF_INSTRUCTIONS,
     CONF_INTERRUPTION_LEVEL,
     CONF_LOW_STOCK_THRESHOLD,
     CONF_MAX_REMINDERS,
     CONF_MAX_SNOOZES,
     CONF_NOTIFY_TARGETS,
+    CONF_PERSON,
     CONF_REFILL_AMOUNT,
     CONF_REQUIRE_UNLOCK,
     CONF_REREMIND_INTERVAL,
@@ -60,6 +65,8 @@ from .const import (
     DEFAULT_CRITICAL_VOLUME,
     DEFAULT_EARLY_TAKE_WINDOW,
     DEFAULT_HISTORY_RETENTION,
+    DEFAULT_HOME_FALLBACK,
+    DEFAULT_HOME_REMINDER,
     DEFAULT_INTERRUPTION_LEVEL,
     DEFAULT_MAX_REMINDERS,
     DEFAULT_MAX_SNOOZES,
@@ -73,6 +80,7 @@ from .const import (
     RANGE_CRITICAL_VOLUME,
     RANGE_EARLY_TAKE_WINDOW,
     RANGE_HISTORY_RETENTION,
+    RANGE_HOME_FALLBACK,
     RANGE_MAX_REMINDERS,
     RANGE_MAX_SNOOZES,
     RANGE_REREMIND_INTERVAL,
@@ -143,6 +151,16 @@ class OptionalNumberSelector(NumberSelector):
         return int(value) if self._integer else value
 
 
+class OptionalEntitySelector(EntitySelector):
+    """An entity picker that may be cleared (empty becomes None)."""
+
+    def __call__(self, data: Any) -> str | None:
+        """Validate, allowing an empty value."""
+        if data is None or (isinstance(data, str) and not data.strip()):
+            return None
+        return super().__call__(data)
+
+
 def _optional_float() -> OptionalNumberSelector:
     return OptionalNumberSelector(
         NumberSelectorConfig(min=0, step="any", mode=NumberSelectorMode.BOX)
@@ -201,6 +219,16 @@ def hub_settings_schema(targets: list[SelectOptionDict]) -> probatio.Schema:
                 CONF_HISTORY_RETENTION, default=DEFAULT_HISTORY_RETENTION
             ): _int_selector(RANGE_HISTORY_RETENTION, "d"),
             probatio.Optional(CONF_TAP_PATH): TextSelector(),
+            # "Remind me at home" (issue #1); no person = feature off.
+            probatio.Optional(CONF_PERSON): OptionalEntitySelector(
+                EntitySelectorConfig(domain="person")
+            ),
+            probatio.Required(
+                CONF_HOME_REMINDER, default=DEFAULT_HOME_REMINDER
+            ): BooleanSelector(),
+            probatio.Required(
+                CONF_HOME_FALLBACK, default=DEFAULT_HOME_FALLBACK
+            ): _int_selector(RANGE_HOME_FALLBACK, "h"),
         }
     )
 
@@ -222,6 +250,9 @@ def _validate_hub(
             options[CONF_TAP_PATH] = tap_path
         else:
             errors[CONF_TAP_PATH] = "invalid_tap_path"
+    # A cleared person picker may come back empty; store no key then.
+    if person := str(options.pop(CONF_PERSON, None) or "").strip():
+        options[CONF_PERSON] = person
     return options, errors
 
 

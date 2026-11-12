@@ -32,6 +32,16 @@ Assistant first. Use a test medication with times a few minutes ahead.
 - [ ] `medtrack.get_history` in Developer tools → Actions returns your recent actions
 - [ ] Download diagnostics: no phone names or user IDs in the file
 
+## Remind me at home (v1.2.0)
+- [ ] Person set and away: reminder shows Taken / Snooze / Remind me at home / Skip; at home or with the option off: no button
+- [ ] Tap "Remind me at home": reminder gone on all phones; Status = snoozed with `until: home`; no repeats while away
+- [ ] Arrive home (or set the person to home): the reminder comes back with Taken / Snooze / Skip
+- [ ] Tap while home: the reminder comes back right away
+- [ ] Taken on the card or device page while waiting: arriving home later sends nothing
+- [ ] "Remind anyway after" passes while away: the reminder comes back
+- [ ] Restart HA while a dose is waiting: still waiting afterwards; arriving home reminds
+- [ ] Card shows "Waiting until you're home" with Taken and Skip
+
 ## Dashboard card (MedTrack Today)
 - [ ] "MedTrack Today" appears in the card picker; the editor lets you choose the hub and shows the card version
 - [ ] Ring shows "taken / total"; a low-stock banner appears at or below the threshold

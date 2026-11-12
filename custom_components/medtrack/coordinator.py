@@ -17,7 +17,14 @@ import logging
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import CALLBACK_TYPE, Event, HomeAssistant, callback
+from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
+from homeassistant.core import (
+    CALLBACK_TYPE,
+    Event,
+    EventStateChangedData,
+    HomeAssistant,
+    callback,
+)
 from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import (
     device_registry as dr,
@@ -28,6 +35,7 @@ from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.entity import Entity
 from homeassistant.helpers.event import (
     async_track_point_in_utc_time,
+    async_track_state_change_event,
     async_track_time_change,
 )
 from homeassistant.util import dt as dt_util, ulid as ulid_util
@@ -39,6 +47,7 @@ from .const import (
     EVENT_DOSE_PREFIX,
     EVENT_MOBILE_APP_ACTION,
     MAX_RECOVERY,
+    PERSON_HOME,
     RATE_BUDGET_WARNING,
     SAVE_DELAY,
     SCHEDULE_HORIZON,
@@ -47,6 +56,7 @@ from .const import (
     SUBENTRY_MEDICATION,
     TAKEN_STATES,
     UNDO_WINDOW,
+    UNTIL_HOME,
     ActionVerb,
     DoseState,
     Source,
@@ -152,6 +162,7 @@ class MedTrackManager:
         self._notifier = Notifier(hass, entry.entry_id, self.settings.notify_targets)
         self._lock = asyncio.Lock()
         self._unsub_timer: CALLBACK_TYPE | None = None
+        self._unsub_person: CALLBACK_TYPE | None = None
         self._unsubs: list[Callable[[], None]] = []
         # Set on shutdown: nothing may run, send or save after that (an
         # unloaded copy must never keep a timer and overwrite newer data).
@@ -185,12 +196,16 @@ class MedTrackManager:
             self._apply_config_stock(sid, now)
         await self._async_drop_unscheduled_doses(now)
         self._recover(now)
+        if not self._can_hold() or self._person_home():
+            # Home already (or the feature was turned off): remind now.
+            self._release_holds(now)
         self._extend_horizon(now)
         self._apply_retention(now)
         self._check_rate_budget()
         for med in self.medications.values():
             await self._async_check_low_stock(med)
         await self._async_save()
+        self._track_person()
 
         self._unsubs.append(
             self.hass.bus.async_listen(
@@ -214,6 +229,7 @@ class MedTrackManager:
         for unsub in self._unsubs:
             unsub()
         self._unsubs.clear()
+        self._untrack_person()
         self._cancel_timer()
         async with self._lock:
             self._cancel_timer()
@@ -239,6 +255,8 @@ class MedTrackManager:
                 self._rename_device(entry.entry_id, entry.title)
             if dict(entry.options) != self._options:
                 self._apply_options()
+                if not self._can_hold() or self._person_home():
+                    self._release_holds(now)
             current = _medication_config(entry)
             previous = self._subentry_config
             removed = [sid for sid in previous if sid not in current]
@@ -282,6 +300,81 @@ class MedTrackManager:
             ir.async_delete_issue(
                 self.hass, DOMAIN, missing_target_issue_id(self.entry.entry_id, target)
             )
+        self._track_person()
+
+    # --- "Remind me at home" (issue #1) ----------------------------------------------
+
+    def _person_state(self) -> str | None:
+        """State of the hub's person, or None without one (or no entity)."""
+        if self.settings.person is None:
+            return None
+        state = self.hass.states.get(self.settings.person)
+        return None if state is None else state.state
+
+    def _person_home(self) -> bool:
+        return self._person_state() == PERSON_HOME
+
+    def _person_away(self) -> bool:
+        """Known to be away: not home, and not unknown or unavailable."""
+        state = self._person_state()
+        return state is not None and state not in (
+            PERSON_HOME,
+            STATE_UNKNOWN,
+            STATE_UNAVAILABLE,
+        )
+
+    def _can_hold(self) -> bool:
+        return self.settings.home_hold_enabled
+
+    def _offer_home(self, dose: Dose) -> bool:
+        """Whether a reminder sent now gets "Remind me at home"."""
+        return self._can_hold() and not dose.home_hold_used and self._person_away()
+
+    def _release_holds(self, now: datetime) -> bool:
+        """Make every dose waiting for home due now (reminded on next run)."""
+        released = False
+        for dose in self.doses.values():
+            if dose.is_held:
+                dose.next_action_at = now
+                released = True
+        return released
+
+    @callback
+    def _track_person(self) -> None:
+        """Follow the hub's person (only while the feature is on)."""
+        self._untrack_person()
+        if self._stopped or not self._can_hold():
+            return
+        self._unsub_person = async_track_state_change_event(
+            self.hass, [self.settings.person], self._handle_person_change
+        )
+
+    @callback
+    def _untrack_person(self) -> None:
+        if self._unsub_person:
+            self._unsub_person()
+            self._unsub_person = None
+
+    @callback
+    def _handle_person_change(self, event: Event[EventStateChangedData]) -> None:
+        """Arriving home re-sends the reminders of doses waiting for it."""
+        new = event.data["new_state"]
+        old = event.data["old_state"]
+        if new is None or new.state != PERSON_HOME:
+            return
+        if old is not None and old.state == PERSON_HOME:
+            return
+        self.entry.async_create_task(
+            self.hass, self._async_arrived_home(), "medtrack person arrived home"
+        )
+
+    async def _async_arrived_home(self) -> None:
+        async with self._lock:
+            if self._stopped:
+                return
+            now = dt_util.utcnow()
+            if self._release_holds(now):
+                self._schedule_wakeup(now)
 
     async def _async_update_medication(
         self, sid: str, title: str, data: dict[str, Any], now: datetime
@@ -555,6 +648,7 @@ class MedTrackManager:
             list(self.medications.values()),
             self.settings.max_reminders,
             self.settings.max_snoozes,
+            home_hold=self._can_hold(),
         )
         issue_id = f"rate_budget_{self.entry.entry_id}"
         if budget <= RATE_BUDGET_WARNING:
@@ -673,7 +767,9 @@ class MedTrackManager:
             else:
                 await self._async_mark_missed(med, dose, now)
         elif dose.state == DoseState.SNOOZED:
-            # The reminder after a snooze repeats the current number.
+            # The reminder after a snooze repeats the current number. This is
+            # also where a dose waiting for home comes back: on arrival, or
+            # when "Remind anyway after" has passed.
             self._transition(med, dose, DoseState.PENDING, now, source=Source.SYSTEM)
             dose.next_action_at = now + self._interval(med)
             await self._async_send_reminder(med, dose)
@@ -692,6 +788,7 @@ class MedTrackManager:
                 number=max(dose.reminders_sent, 1),
                 max_reminders=self._max_reminders(med),
                 url=self.tap_url(med.subentry_id),
+                offer_home=self._offer_home(dose),
             )
         )
 
@@ -735,17 +832,24 @@ class MedTrackManager:
         user_id: str | None = None,
         reason: str | None = None,
         amount: float | None = None,
+        until: str | None = None,
     ) -> None:
         """Change state, fire medtrack_dose_<state> and append a history record.
 
         `amount` is the stock actually used by a taken dose (undo adds it back).
+        `until` (snoozed only) is when the reminder comes back: an ISO time,
+        or "home" for "Remind me at home"; it is in the event and the record.
         """
         extra: dict[str, Any] = {}
         if reason is not None:
             extra["reason"] = reason
         if amount is not None:
             extra["amount"] = amount
+        event_extra: dict[str, Any] = {}
+        if until is not None:
+            extra["until"] = event_extra["until"] = until
         dose.state = state
+        dose.until_home = state == DoseState.SNOOZED and until == UNTIL_HOME
         if state not in (DoseState.PENDING, DoseState.SNOOZED, DoseState.SCHEDULED):
             dose.resolved_at = at
         self.hass.bus.async_fire(
@@ -756,6 +860,7 @@ class MedTrackManager:
                 "scheduled_at": dose.scheduled_at.isoformat(),
                 "at": at.isoformat(),
                 "user_id": user_id,
+                **event_extra,
             },
         )
         self._add_history(
@@ -910,18 +1015,62 @@ class MedTrackManager:
             await self._notifier.async_clear(dose_tag(dose.dose_id))
             return True
 
+        if verb == ActionVerb.HOME:
+            return await self._async_hold_until_home(
+                med, dose, now, source=source, user_id=user_id
+            )
+
         if verb != ActionVerb.SNOOZE or not dose.is_active:
             return False
         if dose.snoozes_used >= self.settings.max_snoozes:
             _LOGGER.info("No snoozes left for dose %s", dose.dose_id)
             return False
         dose.snoozes_used += 1
+        until = now + timedelta(minutes=snooze_minutes or self.settings.snooze_length)
         self._transition(
-            med, dose, DoseState.SNOOZED, now, source=source, user_id=user_id
+            med,
+            dose,
+            DoseState.SNOOZED,
+            now,
+            source=source,
+            user_id=user_id,
+            until=until.isoformat(),
         )
-        dose.next_action_at = now + timedelta(
-            minutes=snooze_minutes or self.settings.snooze_length
+        dose.next_action_at = until
+        return True
+
+    async def _async_hold_until_home(
+        self,
+        med: Medication,
+        dose: Dose,
+        now: datetime,
+        *,
+        source: Source,
+        user_id: str | None,
+    ) -> bool:
+        """ "Remind me at home": hold the dose until the person is home.
+
+        Clears the reminder everywhere; no re-reminders and no "missed" until
+        the person arrives home or "Remind anyway after" has passed. Tapped
+        while already home (or the feature is off by now): remind right away.
+        """
+        if not dose.is_active or dose.is_held:
+            return False  # resolved, or a second tap of the same hold
+        if not self._can_hold() or dose.home_hold_used or not self._person_away():
+            await self._async_send_reminder(med, dose)
+            return False
+        dose.home_hold_used = True
+        self._transition(
+            med,
+            dose,
+            DoseState.SNOOZED,
+            now,
+            source=source,
+            user_id=user_id,
+            until=UNTIL_HOME,
         )
+        dose.next_action_at = now + timedelta(hours=self.settings.home_fallback)
+        await self._notifier.async_clear(dose_tag(dose.dose_id))
         return True
 
     def _is_finished(self, dose_id: str) -> bool:
@@ -1462,7 +1611,13 @@ class MedTrackManager:
             (
                 d
                 for d in self.doses.values()
-                if start <= d.scheduled_at < end and d.subentry_id in self.medications
+                if d.subentry_id in self.medications
+                and (
+                    start <= d.scheduled_at < end
+                    # A dose from yesterday that is still running (for
+                    # example waiting until you are home) stays visible.
+                    or (d.scheduled_at < start and d.is_active)
+                )
             ),
             key=lambda d: (d.scheduled_at, self.medications[d.subentry_id].name),
         ):
@@ -1501,9 +1656,13 @@ class MedTrackManager:
                     else None,
                     "can_take": self._can_take(dose, now),
                     "can_skip": self._can_skip(dose, now),
-                    "can_snooze": dose.is_active and self._snoozes_left(dose) > 0,
+                    "can_snooze": dose.is_active
+                    and not dose.is_held
+                    and self._snoozes_left(dose) > 0,
                     "can_undo": dose.dose_id in undo_dose_ids
                     and dose.state in UNDOABLE_STATES,
+                    "waiting_for_home": dose.is_held,
+                    "earlier_day": dose.scheduled_at < start,
                 }
             )
 
@@ -1534,8 +1693,10 @@ class MedTrackManager:
             "date": start.astimezone(self.tz).date().isoformat(),
             "now": _local_iso(now),
             "refresh_at": _local_iso(min(t for t in refresh if t > now)),
-            "taken": sum(1 for d in doses if d["state"] in TAKEN_STATES),
-            "total": len(doses),
+            "taken": sum(
+                1 for d in doses if d["state"] in TAKEN_STATES and not d["earlier_day"]
+            ),
+            "total": sum(1 for d in doses if not d["earlier_day"]),
             "snooze_length": self.settings.snooze_length,
             "medications": medications,
             "doses": doses,
@@ -1602,11 +1763,14 @@ class MedTrackManager:
         dose = self._current_dose(subentry_id)
         if dose is None:
             return {"dose_id": None, "reminders_sent": 0, "snoozes_used": 0}
-        return {
+        attributes: dict[str, Any] = {
             "dose_id": dose.dose_id,
             "reminders_sent": dose.reminders_sent,
             "snoozes_used": dose.snoozes_used,
         }
+        if dose.is_held:
+            attributes["until"] = UNTIL_HOME
+        return attributes
 
     def taken_today(self, subentry_id: str) -> int:
         """Doses of this medication scheduled today and taken."""

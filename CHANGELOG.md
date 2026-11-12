@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.2.0 (2026-11-12)
+
+- New **Remind me at home** (requested in issue #1): link the hub to a
+  person under Configure. While that person is away, reminders get a
+  "Remind me at home" button; tapping it clears the reminder on all phones
+  and holds the dose (no repeats, not marked missed) until the person is
+  home, then the reminder comes back with the normal buttons. A safety net,
+  "Remind anyway after" (default 4 hours), reminds you even if you are not
+  home yet. Needs the Companion App's location permission set to Always.
+- `medtrack_dose_snoozed` and its history record now include `until` (the
+  time the reminder comes back, or `home`).
+- Card: a dose waiting until you're home shows that, with Taken and Skip. A
+  dose from yesterday that is still running stays on the card after
+  midnight.
+
 ## 1.1.0 (2026-11-08)
 
 - New **MedTrack Today** dashboard card: today's doses as a timeline with a

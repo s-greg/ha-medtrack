@@ -122,11 +122,12 @@ def reminder_payload(
     number: int,
     max_reminders: int,
     url: str | None = None,
+    offer_home: bool = False,
 ) -> dict[str, Any]:
     """Service data for reminder `number` of `max_reminders`.
 
     `url` is the page the Companion App opens when the notification itself
-    (not a button) is tapped.
+    (not a button) is tapped. `offer_home` adds "Remind me at home".
     """
     critical = medication.critical_mode == CriticalMode.ALL_REMINDERS or (
         medication.critical_mode == CriticalMode.FINAL_REMINDER
@@ -138,6 +139,13 @@ def reminder_payload(
             {
                 "action": action_id(ActionVerb.SNOOZE, dose.dose_id),
                 "title": f"Snooze {settings.snooze_length} min",
+            }
+        )
+    if offer_home:
+        actions.append(
+            {
+                "action": action_id(ActionVerb.HOME, dose.dose_id),
+                "title": "Remind me at home",
             }
         )
     actions.append(

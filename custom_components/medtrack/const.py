@@ -28,6 +28,11 @@ CONF_HISTORY_RETENTION: Final = "history_retention"
 # Page the Companion App opens when a reminder is tapped; empty = the
 # medication's device page.
 CONF_TAP_PATH: Final = "tap_path"
+# "Remind me at home" (issue #1): the person whose home/away state decides
+# whether the button is offered and when a held dose is reminded again.
+CONF_PERSON: Final = "person"
+CONF_HOME_REMINDER: Final = "home_reminder"
+CONF_HOME_FALLBACK: Final = "home_fallback"  # hours
 
 DEFAULT_REREMIND_INTERVAL: Final = 10
 DEFAULT_MAX_REMINDERS: Final = 4
@@ -37,6 +42,8 @@ DEFAULT_EARLY_TAKE_WINDOW: Final = 60
 DEFAULT_REQUIRE_UNLOCK: Final = False
 DEFAULT_CRITICAL_VOLUME: Final = 1.0
 DEFAULT_HISTORY_RETENTION: Final = 0
+DEFAULT_HOME_REMINDER: Final = True
+DEFAULT_HOME_FALLBACK: Final = 4
 
 # (min, max) ranges, inclusive.
 RANGE_REREMIND_INTERVAL: Final = (1, 120)
@@ -46,6 +53,7 @@ RANGE_SNOOZE_LENGTH: Final = (5, 120)
 RANGE_EARLY_TAKE_WINDOW: Final = (0, 180)
 RANGE_CRITICAL_VOLUME: Final = (0.1, 1.0)
 RANGE_HISTORY_RETENTION: Final = (0, 3650)
+RANGE_HOME_FALLBACK: Final = (1, 24)
 
 
 class InterruptionLevel(StrEnum):
@@ -141,12 +149,18 @@ class ActionVerb(StrEnum):
     TAKEN = "TAKEN"
     SNOOZE = "SNOOZE"
     SKIP = "SKIP"
+    # "Remind me at home": hold the dose until the hub's person is home.
+    HOME = "HOME"
     # Low-stock notification: MEDTRACK_REFILL_<subentry_id>
     REFILL = "REFILL"
 
 
 # Bus events: medtrack_dose_<state>
 EVENT_DOSE_PREFIX: Final = f"{DOMAIN}_dose_"
+# `until` of a dose held by "Remind me at home" (event, history, status).
+UNTIL_HOME: Final = "home"
+# State of a person entity at home.
+PERSON_HOME: Final = "home"
 
 # --- Storage -------------------------------------------------------------------
 STORAGE_VERSION: Final = 1

@@ -17,12 +17,15 @@ from .const import (
     CONF_DOSE_AMOUNT,
     CONF_EARLY_TAKE_WINDOW,
     CONF_HISTORY_RETENTION,
+    CONF_HOME_FALLBACK,
+    CONF_HOME_REMINDER,
     CONF_INSTRUCTIONS,
     CONF_INTERRUPTION_LEVEL,
     CONF_LOW_STOCK_THRESHOLD,
     CONF_MAX_REMINDERS,
     CONF_MAX_SNOOZES,
     CONF_NOTIFY_TARGETS,
+    CONF_PERSON,
     CONF_REFILL_AMOUNT,
     CONF_REQUIRE_UNLOCK,
     CONF_REREMIND_INTERVAL,
@@ -33,6 +36,8 @@ from .const import (
     DEFAULT_CRITICAL_VOLUME,
     DEFAULT_EARLY_TAKE_WINDOW,
     DEFAULT_HISTORY_RETENTION,
+    DEFAULT_HOME_FALLBACK,
+    DEFAULT_HOME_REMINDER,
     DEFAULT_INTERRUPTION_LEVEL,
     DEFAULT_MAX_REMINDERS,
     DEFAULT_MAX_SNOOZES,
@@ -59,6 +64,16 @@ class HubSettings:
     critical_volume: float
     history_retention: int
     tap_path: str | None = None  # None = the medication's device page
+    # "Remind me at home": person entity ID (None = feature off), whether the
+    # button is offered, and hours after which a held dose is reminded anyway.
+    person: str | None = None
+    home_reminder: bool = DEFAULT_HOME_REMINDER
+    home_fallback: int = DEFAULT_HOME_FALLBACK
+
+    @property
+    def home_hold_enabled(self) -> bool:
+        """Whether reminders may offer "Remind me at home"."""
+        return self.person is not None and self.home_reminder
 
     @classmethod
     def from_options(cls, options: Mapping[str, Any]) -> HubSettings:
@@ -87,6 +102,9 @@ class HubSettings:
                 options.get(CONF_HISTORY_RETENTION, DEFAULT_HISTORY_RETENTION)
             ),
             tap_path=str(options.get(CONF_TAP_PATH) or "").strip() or None,
+            person=str(options.get(CONF_PERSON) or "").strip() or None,
+            home_reminder=bool(options.get(CONF_HOME_REMINDER, DEFAULT_HOME_REMINDER)),
+            home_fallback=int(options.get(CONF_HOME_FALLBACK, DEFAULT_HOME_FALLBACK)),
         )
 
 
@@ -105,11 +123,21 @@ class Dose:
     # first reminder, next reminder, missed, or dropping it from memory.
     next_action_at: datetime | None = None
     resolved_at: datetime | None = None
+    # "Remind me at home": the dose is snoozed until the person is home
+    # (next_action_at is then the "remind anyway" time). The button is
+    # offered once per dose; `home_hold_used` records that it was used.
+    until_home: bool = False
+    home_hold_used: bool = False
 
     @property
     def is_active(self) -> bool:
         """Pending or snoozed: reminders are running."""
         return self.state in ACTIVE_STATES
+
+    @property
+    def is_held(self) -> bool:
+        """Snoozed until the person is home."""
+        return self.until_home and self.state == DoseState.SNOOZED
 
     def as_dict(self) -> dict[str, Any]:
         """Serialise for the Store (UTC ISO 8601 timestamps)."""
@@ -123,6 +151,8 @@ class Dose:
             "snoozes_used": self.snoozes_used,
             "next_action_at": _iso(self.next_action_at),
             "resolved_at": _iso(self.resolved_at),
+            "until_home": self.until_home,
+            "home_hold_used": self.home_hold_used,
         }
 
     @classmethod
@@ -138,6 +168,8 @@ class Dose:
             snoozes_used=int(data.get("snoozes_used", 0)),
             next_action_at=_parse(data.get("next_action_at")),
             resolved_at=_parse(data.get("resolved_at")),
+            until_home=bool(data.get("until_home", False)),
+            home_hold_used=bool(data.get("home_hold_used", False)),
         )
 
 

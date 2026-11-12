@@ -16,7 +16,10 @@
           "require_unlock": "Require unlock for \"Taken\"",
           "critical_volume": "Critical alert volume",
           "history_retention": "History retention",
-          "tap_path": "Page to open when tapping a reminder"
+          "tap_path": "Page to open when tapping a reminder",
+          "person": "Person (for “Remind me at home”)",
+          "home_reminder": "Offer “Remind me at home”",
+          "home_fallback": "Remind anyway after"
         },
         "data_description": {
           "notify_targets": "Companion App notify services. Every reminder goes to all selected phones.",
@@ -28,7 +31,10 @@
           "require_unlock": "The phone must be unlocked before \"Taken\" is accepted.",
           "critical_volume": "Volume (0.1 to 1.0) of critical alerts, which sound even when the phone is muted.",
           "history_retention": "Days to keep dose history. 0 keeps it forever.",
-          "tap_path": "Optional. A Home Assistant path such as /lovelace/medication. Leave empty to open the medication's device page, where its Take, Skip and Snooze buttons are."
+          "tap_path": "Optional. A Home Assistant path such as /lovelace/medication. Leave empty to open the medication's device page, where its Take, Skip and Snooze buttons are.",
+          "person": "Optional. The person whose home or away state is used. When this person is away, reminders get a “Remind me at home” button; MedTrack then waits and reminds again when they are home. Needs the Companion App's location permission set to Always.",
+          "home_reminder": "Show the “Remind me at home” button on reminders while the person is away.",
+          "home_fallback": "A dose waiting for you to get home is reminded again after this many hours, even if you are not home yet."
         }
       }
     },
@@ -55,7 +61,10 @@
           "require_unlock": "Require unlock for \"Taken\"",
           "critical_volume": "Critical alert volume",
           "history_retention": "History retention",
-          "tap_path": "Page to open when tapping a reminder"
+          "tap_path": "Page to open when tapping a reminder",
+          "person": "Person (for “Remind me at home”)",
+          "home_reminder": "Offer “Remind me at home”",
+          "home_fallback": "Remind anyway after"
         },
         "data_description": {
           "notify_targets": "Companion App notify services. Every reminder goes to all selected phones.",
@@ -67,7 +76,10 @@
           "require_unlock": "The phone must be unlocked before \"Taken\" is accepted.",
           "critical_volume": "Volume (0.1 to 1.0) of critical alerts, which sound even when the phone is muted.",
           "history_retention": "Days to keep dose history. 0 keeps it forever.",
-          "tap_path": "Optional. A Home Assistant path such as /lovelace/medication. Leave empty to open the medication's device page, where its Take, Skip and Snooze buttons are."
+          "tap_path": "Optional. A Home Assistant path such as /lovelace/medication. Leave empty to open the medication's device page, where its Take, Skip and Snooze buttons are.",
+          "person": "Optional. The person whose home or away state is used. When this person is away, reminders get a “Remind me at home” button; MedTrack then waits and reminds again when they are home. Needs the Companion App's location permission set to Always.",
+          "home_reminder": "Show the “Remind me at home” button on reminders while the person is away.",
+          "home_fallback": "A dose waiting for you to get home is reminded again after this many hours, even if you are not home yet."
         }
       }
     },

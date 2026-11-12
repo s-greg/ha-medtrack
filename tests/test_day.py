@@ -112,6 +112,8 @@ async def test_day_before_first_dose(
         "can_skip": False,
         "can_snooze": False,
         "can_undo": False,
+        "waiting_for_home": False,
+        "earlier_day": False,
     }
 
 
@@ -322,16 +324,20 @@ async def test_day_keeps_resolved_doses_of_changed_times(
 async def test_day_rolls_over_at_midnight(
     hass: HomeAssistant, freezer: FrozenDateTimeFactory, notify_calls: Calls
 ) -> None:
-    """After midnight only the new day's doses are listed."""
+    """After midnight the new day's doses are listed, plus a dose from
+    yesterday that is still running (not counted in taken / total)."""
     _, sid = await start_hub(hass, freezer)
     await _miss_morning_dose(hass, freezer)
     await move_to(hass, freezer, local(2026, 11, 6, 0, 0))
     day = await _day(hass)
     assert day["date"] == "2026-11-06"
-    assert [d["dose_id"] for d in day["doses"]] == [
-        f"{sid}_20261106_0800",
-        f"{sid}_20261106_2000",
+    assert [(d["dose_id"], d["earlier_day"]) for d in day["doses"]] == [
+        (f"{sid}_20261105_2000", True),
+        (f"{sid}_20261106_0800", False),
+        (f"{sid}_20261106_2000", False),
     ]
+    assert day["doses"][0]["state"] == "pending"
+    assert day["total"] == 2
 
 
 async def test_day_sorted_by_time_then_name(

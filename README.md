@@ -12,6 +12,7 @@ Companion App.
   phone you choose. Taking a dose on one phone clears the reminder on the others.
 - Repeats until you respond, then marks the dose **missed** (with a
   **Taken late** button).
+- Out? **Remind me at home** holds a reminder until you get home.
 - Tracks stock, shows days remaining, and alerts once when stock runs low,
   with a **Refilled** button.
 - Permanent dose history (survives Home Assistant's recorder purge), with
@@ -99,6 +100,9 @@ Home Assistant configuration and restart.
 | Critical alert volume | Volume of critical alerts (see below) |
 | History retention | Days of history to keep; 0 keeps everything |
 | Page to open when tapping a reminder | Empty: the medication's device page |
+| Person (for "Remind me at home") | Optional; see [Remind me at home](#remind-me-at-home) |
+| Offer "Remind me at home" | Show the button while the person is away (default on) |
+| Remind anyway after | Hours a dose waits for you to get home at most (1–24, default 4) |
 
 **Medications:** on the MedTrack integration page select **Add medication**.
 Name, dose amount and unit (for example 2 tablet), times, days and optional
@@ -112,13 +116,47 @@ reminders) and per-medication reminder overrides. Edit a medication with its
 Check that they are allowed on each iPhone and iPad: **Settings → Notifications → Home
 Assistant → Critical Alerts**.
 
+## Remind me at home
+
+For doses you can only take at home (the pills are there): when you are out,
+a reminder can wait until you get home.
+
+1. Under **Configure**, choose a **Person** (the person who takes the doses)
+   and leave **Offer "Remind me at home"** on.
+2. While that person is away, reminders get an extra button, **Remind me at
+   home** (Taken / Snooze / Remind me at home / Skip).
+3. Tap it: the reminder disappears from all phones. No repeats, and the dose
+   is not marked missed while you are away.
+4. When the person's state changes to **home**, the reminder comes back with
+   the normal buttons, and repeats as usual.
+
+Good to know:
+
+- **It relies on the person's home/away state.** That comes from the
+  Companion App's location, so on each iPhone of that person set **Settings →
+  Home Assistant → Location** to **Always** (and keep Precise Location on).
+  If location updates arrive late, so does the reminder.
+- The button only appears when the person is known to be away: not when they
+  are home, and not when their state is unknown.
+- Tapped while you are already home? The reminder comes back right away.
+- **Safety net:** after **Remind anyway after** (default 4 hours) the
+  reminder comes back even if you are not home yet.
+- Taking or skipping the dose elsewhere (card, device page, another phone)
+  ends the wait. If the next dose of the same medication starts first, the
+  waiting dose becomes **missed**, with the usual "Taken late" notification.
+- The button is offered once per dose, and does not use up a snooze.
+- A wait continues past midnight and survives a restart of Home Assistant.
+  If you came home while Home Assistant was off, the reminder comes as soon
+  as it has started.
+- The button is shown on every phone that gets the reminders.
+
 ## Entities (per medication)
 
 | Entity | Shows / does |
 |---|---|
 | Stock, Days remaining, Low stock | Only with stock tracking |
 | Next dose | Time of the next dose |
-| Status | Idle, pending, snoozed, taken, taken late, skipped or missed |
+| Status | Idle, pending, snoozed, taken, taken late, skipped or missed (snoozed with attribute `until: home` while waiting until you are home) |
 | Taken today | Doses taken today (attribute: due today) |
 | Last action | What Undo would revert, for example "Taken 08:02" |
 | Take, Skip, Snooze | Act on the running dose, or (Take, Skip) on one within the early-take window |
@@ -134,7 +172,8 @@ Today's doses as a timeline, with a progress ring ("3 of 5 doses taken
 today") and a banner when a medication runs low.
 
 - A due or snoozed dose shows **Taken**, **Snooze** and **Skip**, and which
-  reminder it is on.
+  reminder it is on. A dose waiting until you are home shows "Waiting until
+  you're home" with **Taken** and **Skip**.
 - Tap an upcoming dose to **Take early** or **Skip** it (within the
   early-take window).
 - A missed dose offers **Taken late**. Doses taken late get an amber
@@ -187,7 +226,8 @@ except `get_day`.
 Events for automations: `medtrack_dose_pending`, `medtrack_dose_snoozed`,
 `medtrack_dose_taken`, `medtrack_dose_taken_late`, `medtrack_dose_skipped`,
 `medtrack_dose_missed`, with `medication`, `dose_id`, `scheduled_at`, `at`
-and `user_id`.
+and `user_id`. `medtrack_dose_snoozed` also has `until`: the time the
+reminder comes back, or `home` for "Remind me at home".
 
 Example: get this week's history.
 
