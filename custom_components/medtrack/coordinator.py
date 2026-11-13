@@ -1164,6 +1164,35 @@ class MedTrackManager:
             snooze_minutes=minutes,
         )
 
+    async def async_remind_at_home(
+        self,
+        subentry_id: str,
+        *,
+        dose_id: str | None = None,
+        user_id: str | None,
+        source: Source = Source.SERVICE,
+    ) -> bool:
+        """remind_at_home action (and the card's button): like the
+        notification's "Remind me at home", for the running dose or `dose_id`.
+
+        Explains why when it cannot be done; when the person is already home
+        the reminder is sent again right away (same as the notification).
+        """
+        dose = self.doses.get(dose_id) if dose_id else None
+        if dose_id is None:
+            dose = self.find_dose(subentry_id, early=False)
+        if dose is None or not dose.is_active:
+            raise self._nothing_to_do("nothing_to_hold", subentry_id)
+        if not self._can_hold():
+            raise self._nothing_to_do("home_hold_off", subentry_id)
+        if dose.is_held:
+            raise self._nothing_to_do("already_waiting_for_home", subentry_id)
+        if dose.home_hold_used:
+            raise self._nothing_to_do("home_hold_used", subentry_id)
+        return await self.async_handle_action(
+            ActionVerb.HOME, dose.dose_id, user_id=user_id, source=source
+        )
+
     def _nothing_to_do(
         self, key: str, subentry_id: str, **placeholders: str
     ) -> ServiceValidationError:
@@ -1662,6 +1691,9 @@ class MedTrackManager:
                     "can_undo": dose.dose_id in undo_dose_ids
                     and dose.state in UNDOABLE_STATES,
                     "waiting_for_home": dose.is_held,
+                    "can_wait_for_home": dose.is_active
+                    and not dose.is_held
+                    and self._offer_home(dose),
                     "earlier_day": dose.scheduled_at < start,
                 }
             )

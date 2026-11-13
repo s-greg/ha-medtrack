@@ -10,6 +10,16 @@ take_dose:
       selector:
         text:
 
+remind_at_home:
+  target:
+    entity:
+      integration: medtrack
+  fields:
+    dose_id:
+      required: false
+      selector:
+        text:
+
 skip_dose:
   target:
     entity:

@@ -330,6 +330,18 @@
     "no_snoozes_left": {
       "message": "{medication}: no snoozes left for this dose."
     },
+    "nothing_to_hold": {
+      "message": "{medication}: there is no running dose to hold until you are home."
+    },
+    "home_hold_off": {
+      "message": "{medication}: “Remind me at home” is not set up. Choose a Person and turn on “Offer ‘Remind me at home’” under Configure."
+    },
+    "already_waiting_for_home": {
+      "message": "{medication}: this dose is already waiting until you are home."
+    },
+    "home_hold_used": {
+      "message": "{medication}: “Remind me at home” can be used once per dose, and this dose already used it."
+    },
     "stock_not_tracked": {
       "message": "{medication} does not track stock. Fill in Current stock in the medication's settings first."
     },
@@ -392,6 +404,16 @@
         "minutes": {
           "name": "Minutes",
           "description": "Optional. Defaults to the snooze length in the MedTrack settings."
+        }
+      }
+    },
+    "remind_at_home": {
+      "name": "Remind me at home",
+      "description": "Holds the running dose until the hub's person is home (same as the reminder's “Remind me at home” button): the reminder is cleared and comes back on arrival, or after “Remind anyway after”. When the person is already home, the reminder is sent again right away. Select the medication by its device or one of its entities.",
+      "fields": {
+        "dose_id": {
+          "name": "Dose ID",
+          "description": "Optional. A specific running dose. Leave empty to use the medication's running dose."
         }
       }
     },

@@ -453,6 +453,7 @@ def test_action_descriptions_match_strings() -> None:
             "take_dose",
             "skip_dose",
             "snooze_dose",
+            "remind_at_home",
             "refill",
             "set_stock",
             "undo_last",

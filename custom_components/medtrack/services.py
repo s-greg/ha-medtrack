@@ -40,6 +40,7 @@ from .const import (
     SERVICE_GET_DAY,
     SERVICE_GET_HISTORY,
     SERVICE_REFILL,
+    SERVICE_REMIND_AT_HOME,
     SERVICE_SET_STOCK,
     SERVICE_SKIP_DOSE,
     SERVICE_SNOOZE_DOSE,
@@ -212,6 +213,17 @@ async def _snooze(call: ServiceCall) -> None:
     )
 
 
+async def _remind_at_home(call: ServiceCall) -> None:
+    """Hold the running dose (or `dose_id`) until the hub's person is home."""
+    if dose_id := call.data.get(ATTR_DOSE_ID):
+        manager, sid = _by_dose_id(call.hass, call, dose_id)
+    else:
+        manager, sid = _single(call.hass, call)
+    await manager.async_remind_at_home(
+        sid, dose_id=dose_id, user_id=call.context.user_id, source=Source.SERVICE
+    )
+
+
 async def _refill(call: ServiceCall) -> None:
     manager, sid = _single(call.hass, call)
     await manager.async_refill(
@@ -294,6 +306,7 @@ def async_setup_services(hass: HomeAssistant) -> None:
         schema=DOSE_SCHEMA,
     )
     register(DOMAIN, SERVICE_SNOOZE_DOSE, _snooze, schema=SNOOZE_SCHEMA)
+    register(DOMAIN, SERVICE_REMIND_AT_HOME, _remind_at_home, schema=DOSE_SCHEMA)
     register(DOMAIN, SERVICE_REFILL, _refill, schema=REFILL_SCHEMA)
     register(DOMAIN, SERVICE_SET_STOCK, _set_stock, schema=SET_STOCK_SCHEMA)
     register(DOMAIN, SERVICE_UNDO_LAST, _undo_last, schema=TARGET_SCHEMA)

@@ -44,6 +44,7 @@ const T = {
   btnTakeEarly: "Take early",
   btnSnooze: "Snooze",
   btnSkip: "Skip",
+  btnAtHome: "Remind at home",
   btnUndo: "Undo",
   btnCancel: "Cancel",
   btnRefill: "Refill",
@@ -328,6 +329,9 @@ class MedTrackTodayCard extends HTMLElement {
       case "snooze":
         this._call("snooze_dose", {}, target(med));
         break;
+      case "home":
+        this._call("remind_at_home", { dose_id: dose });
+        break;
       case "undo":
         this._confirmUndo(med);
         break;
@@ -526,6 +530,7 @@ class MedTrackTodayCard extends HTMLElement {
         if (d.waiting_for_home && d.next_reminder_at) details.push(T.remindBy(hhmm(d.next_reminder_at)));
         if (d.can_take) buttons.push(this._button(T.btnTaken, "take", doseAttr, true));
         if (d.can_snooze) buttons.push(this._button(T.btnSnooze, "snooze", medAttr));
+        if (d.can_wait_for_home) buttons.push(this._button(T.btnAtHome, "home", doseAttr));
         if (d.can_skip) buttons.push(this._button(T.btnSkip, "skip", doseAttr));
         break;
       default: // scheduled

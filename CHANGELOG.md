@@ -11,9 +11,12 @@
   home yet. Needs the Companion App's location permission set to Always.
 - `medtrack_dose_snoozed` and its history record now include `until` (the
   time the reminder comes back, or `home`).
-- Card: a dose waiting until you're home shows that, with Taken and Skip. A
-  dose from yesterday that is still running stays on the card after
+- Card: while the person is away a running dose also has a "Remind at home"
+  button; a dose waiting until you're home shows that, with Taken and Skip.
+  A dose from yesterday that is still running stays on the card after
   midnight.
+- New `medtrack.remind_at_home` action (used by the card, also usable in
+  automations).
 
 ## 1.1.0 (2026-11-08)
 

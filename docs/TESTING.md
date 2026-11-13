@@ -41,6 +41,7 @@ Assistant first. Use a test medication with times a few minutes ahead.
 - [ ] "Remind anyway after" passes while away: the reminder comes back
 - [ ] Restart HA while a dose is waiting: still waiting afterwards; arriving home reminds
 - [ ] Card shows "Waiting until you're home" with Taken and Skip
+- [ ] Card: while away, a due dose has "Remind at home"; pressing it does the same as the notification button (and clears the reminder on the phones)
 
 ## Dashboard card (MedTrack Today)
 - [ ] "MedTrack Today" appears in the card picker; the editor lets you choose the hub and shows the card version

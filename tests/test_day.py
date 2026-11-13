@@ -113,6 +113,7 @@ async def test_day_before_first_dose(
         "can_snooze": False,
         "can_undo": False,
         "waiting_for_home": False,
+        "can_wait_for_home": False,
         "earlier_day": False,
     }
 

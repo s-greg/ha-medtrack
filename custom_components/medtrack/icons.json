@@ -75,6 +75,9 @@
     "snooze_dose": {
       "service": "mdi:alarm-snooze"
     },
+    "remind_at_home": {
+      "service": "mdi:home-clock"
+    },
     "refill": {
       "service": "mdi:package-variant-closed-plus"
     },

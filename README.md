@@ -124,7 +124,8 @@ a reminder can wait until you get home.
 1. Under **Configure**, choose a **Person** (the person who takes the doses)
    and leave **Offer "Remind me at home"** on.
 2. While that person is away, reminders get an extra button, **Remind me at
-   home** (Taken / Snooze / Remind me at home / Skip).
+   home** (Taken / Snooze / Remind me at home / Skip). The dashboard card
+   shows the same button as **Remind at home**.
 3. Tap it: the reminder disappears from all phones. No repeats, and the dose
    is not marked missed while you are away.
 4. When the person's state changes to **home**, the reminder comes back with
@@ -172,8 +173,10 @@ Today's doses as a timeline, with a progress ring ("3 of 5 doses taken
 today") and a banner when a medication runs low.
 
 - A due or snoozed dose shows **Taken**, **Snooze** and **Skip**, and which
-  reminder it is on. A dose waiting until you are home shows "Waiting until
-  you're home" with **Taken** and **Skip**.
+  reminder it is on. While the hub's person is away it also shows **Remind
+  at home** (see [Remind me at home](#remind-me-at-home)). A dose waiting
+  until you are home shows "Waiting until you're home" with **Taken** and
+  **Skip**.
 - Tap an upcoming dose to **Take early** or **Skip** it (within the
   early-take window).
 - A missed dose offers **Taken late**. Doses taken late get an amber
@@ -217,6 +220,7 @@ except `get_day`.
 | `medtrack.take_dose` | `dose_id` (optional) |
 | `medtrack.skip_dose` | `dose_id` (optional) |
 | `medtrack.snooze_dose` | `minutes` (optional) |
+| `medtrack.remind_at_home` | `dose_id` (optional); holds the running dose until the person is home |
 | `medtrack.refill` | `amount` (optional, default refill amount) |
 | `medtrack.set_stock` | `amount` |
 | `medtrack.undo_last` | |

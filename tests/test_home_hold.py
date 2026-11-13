@@ -6,6 +6,8 @@ from typing import Any
 
 from freezegun.api import FrozenDateTimeFactory
 from homeassistant.core import HomeAssistant, ServiceCall
+from homeassistant.exceptions import ServiceValidationError
+import pytest
 from pytest_homeassistant_custom_component.common import (
     MockConfigEntry,
     async_capture_events,
@@ -441,3 +443,105 @@ async def test_options_form_sets_and_clears_the_person(
     )
     await hass.async_block_till_done()
     assert CONF_PERSON not in entry.options
+
+
+# --- remind_at_home action (used by the card) ------------------------------------------
+
+
+async def test_card_offers_the_button_while_away(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory, notify_calls: Calls
+) -> None:
+    """get_day's can_wait_for_home follows the same rules as the notification."""
+    _, _, dose_id = await _start(hass, freezer)
+    await move_to(hass, freezer, local(2026, 11, 5, 8, 0))
+
+    async def can_wait() -> bool:
+        day = await medtrack(hass, "get_day")
+        dose = next(d for d in day["doses"] if d["dose_id"] == dose_id)
+        return dose["can_wait_for_home"]
+
+    assert await can_wait()
+    _set_person(hass, "home")
+    assert not await can_wait()
+    _set_person(hass, "unknown")
+    assert not await can_wait()
+
+
+async def test_remind_at_home_action_holds_the_dose(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory, notify_calls: Calls
+) -> None:
+    """The card's button: same hold as the notification, source service."""
+    entry, _, dose_id = await _start(hass, freezer)
+    await move_to(hass, freezer, local(2026, 11, 5, 8, 0))
+    reset(notify_calls)
+    await medtrack(hass, "remind_at_home", {"dose_id": dose_id})
+    assert entry_dose(hass, dose_id).is_held
+    assert clears(notify_calls) == [f"medtrack_{dose_id}"]
+    assert history(entry)[-1]["until"] == "home"
+    assert history(entry)[-1]["source"] == "service"
+    day = await medtrack(hass, "get_day")
+    held = next(d for d in day["doses"] if d["dose_id"] == dose_id)
+    assert held["waiting_for_home"] and not held["can_wait_for_home"]
+
+    await _arrive(hass)
+    (payload,) = reminders(notify_calls)
+    assert payload["data"]["tag"] == f"medtrack_{dose_id}"
+
+
+async def test_remind_at_home_action_by_device(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory, notify_calls: Calls
+) -> None:
+    """Without dose_id: the medication's running dose."""
+    _, _, dose_id = await _start(hass, freezer)
+    await move_to(hass, freezer, local(2026, 11, 5, 8, 0))
+    await medtrack(hass, "remind_at_home", {"entity_id": "sensor.metformin_status"})
+    assert entry_dose(hass, dose_id).is_held
+
+
+async def test_remind_at_home_action_while_home_reminds_now(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory, notify_calls: Calls
+) -> None:
+    """Person already home: the reminder is sent again, nothing is held."""
+    _, _, dose_id = await _start(hass, freezer)
+    await move_to(hass, freezer, local(2026, 11, 5, 8, 0))
+    _set_person(hass, "home")
+    reset(notify_calls)
+    await medtrack(hass, "remind_at_home", {"dose_id": dose_id})
+    assert not entry_dose(hass, dose_id).is_held
+    (payload,) = reminders(notify_calls)
+    assert payload["data"]["tag"] == f"medtrack_{dose_id}"
+
+
+async def _error_key(hass: HomeAssistant, data: dict[str, Any]) -> str:
+    with pytest.raises(ServiceValidationError) as err:
+        await medtrack(hass, "remind_at_home", data)
+    return err.value.translation_key
+
+
+async def test_remind_at_home_action_errors(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory, notify_calls: Calls
+) -> None:
+    """Clear errors: nothing running, already waiting, already used."""
+    _, _, dose_id = await _start(hass, freezer)
+    target = {"entity_id": "sensor.metformin_status"}
+    assert await _error_key(hass, target) == "nothing_to_hold"
+
+    await move_to(hass, freezer, local(2026, 11, 5, 8, 0))
+    await medtrack(hass, "remind_at_home", {"dose_id": dose_id})
+    assert await _error_key(hass, {"dose_id": dose_id}) == "already_waiting_for_home"
+
+    await _arrive(hass)
+    _set_person(hass, "not_home")
+    assert await _error_key(hass, {"dose_id": dose_id}) == "home_hold_used"
+
+
+async def test_remind_at_home_action_without_person(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory, notify_calls: Calls
+) -> None:
+    """Feature not set up: says how to set it up."""
+    await start_hub(hass, freezer)
+    await move_to(hass, freezer, local(2026, 11, 5, 8, 0))
+    assert (
+        await _error_key(hass, {"entity_id": "sensor.metformin_status"})
+        == "home_hold_off"
+    )

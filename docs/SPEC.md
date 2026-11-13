@@ -116,6 +116,7 @@ Each transition fires a bus event `medtrack_dose_<state>` with `{medication, dos
 - **Midnight:** no effect; a hold ends only by the events above.
 - **Restart:** the hold is persisted with the dose (`until_home`, `home_hold_used`). On start, held doses are released at once if the person is home or the feature is off; otherwise they stay held. If the remind-anyway time passed while HA was down, normal recovery (§10) applies: reminded now if still inside the reminder window, else missed silently. `person` is an after-dependency so its restored state is known.
 - Removing the person or turning the option off releases holds immediately.
+- **Action `medtrack.remind_at_home`** (`dose_id` optional, else the targeted medication's running dose; source `service`): the same hold, used by the card's "Remind at home" button. Errors: `nothing_to_hold` (no running dose), `home_hold_off` (no person or option off), `already_waiting_for_home`, `home_hold_used`. Person not away: the reminder is re-sent at once (as for the notification). `get_day` gives `can_wait_for_home` with the same rules as the notification button.
 - Rate budget (§6): +1 push per dose while the feature is on.
 - The person's state and location are never logged.
 
@@ -198,6 +199,7 @@ All target exactly one medication via `device_id` or `entity_id` of one of its e
 | `medtrack.take_dose` | `dose_id` optional | Same rules as the Taken button; with `dose_id` that dose (pending, snoozed, missed = taken late, or upcoming in the early window) |
 | `medtrack.skip_dose` | `dose_id` optional | Same rules as the Skip button |
 | `medtrack.snooze_dose` | `minutes` optional (5–120) | Default: hub snooze length |
+| `medtrack.remind_at_home` | `dose_id` optional | Hold the running dose until the hub's person is home (§5.1) |
 | `medtrack.refill` | `amount` optional (default refill amount) | Adds stock, logs a refill record |
 | `medtrack.set_stock` | `amount` required | Stock correction, logged |
 | `medtrack.undo_last` | — | Reverts the medication's last taken/skipped/refill (within 24 h, not by the system), restores stock (unless a stock correction came after it). A reverted dose before its time is scheduled again; inside its reminder window it goes back to `pending` and the reminder is re-sent; otherwise (or if it was taken late, or a newer dose has started) it is `missed` again with its "Taken late" notification. Repeating undo goes further back. `set_stock` is not undoable. Logged as an `undo` record with `undone_id` |
