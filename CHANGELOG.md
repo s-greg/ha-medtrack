@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.2.0 (2026-11-12)
+## 1.2.0 (2026-11-15)
 
 - New **Remind me at home** (requested in issue #1): link the hub to a
   person under Configure. While that person is away, reminders get a
