@@ -131,6 +131,10 @@ a reminder can wait until you get home.
 4. When the person's state changes to **home**, the reminder comes back with
    the normal buttons, and repeats as usual.
 
+| Hub settings | Dashboard card |
+|---|---|
+| <img src="docs/images/settings-remind-at-home.png" alt="Person, Offer Remind me at home and Remind anyway after in the hub settings" width="360"> | <img src="docs/images/card-remind-at-home.png" alt="Card with a dose waiting until you're home and a due dose with Remind at home" width="300"> |
+
 Good to know:
 
 - **It relies on the person's home/away state.** That comes from the
