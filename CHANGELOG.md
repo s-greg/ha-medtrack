@@ -17,6 +17,10 @@
   midnight.
 - New `medtrack.remind_at_home` action (used by the card, also usable in
   automations).
+- Fixed: the card could show "Custom element doesn't exist:
+  medtrack-today-card", mostly in the Companion App. When the card file came
+  from the browser cache it registered itself before the dashboard was
+  ready; it now waits for the dashboard.
 
 ## 1.1.0 (2026-11-08)
 

@@ -42,6 +42,8 @@ Assistant first. Use a test medication with times a few minutes ahead.
 - [ ] Restart HA while a dose is waiting: still waiting afterwards; arriving home reminds
 - [ ] Card shows "Waiting until you're home" with Taken and Skip
 - [ ] Card: while away, a due dose has "Remind at home"; pressing it does the same as the notification button (and clears the reminder on the phones)
+- [ ] Card already open at home, then leave: "Remind at home" appears within a few seconds (no reload)
+- [ ] Device page Snooze while waiting: error "already waiting until you are home"; the dose keeps waiting
 
 ## Dashboard card (MedTrack Today)
 - [ ] "MedTrack Today" appears in the card picker; the editor lets you choose the hub and shows the card version
@@ -52,6 +54,7 @@ Assistant first. Use a test medication with times a few minutes ahead.
 - [ ] Missed dose: "Taken late" button; afterwards the dose has an amber check (on-time doses keep the normal check)
 - [ ] Refill dialog label uses the plural unit, e.g. "Amount (tablets)"
 - [ ] After an HA restart, wait until it has fully started, open the app: the card loads (no "Custom element doesn't exist")
+- [ ] Close and reopen the Companion App several times (card file from the app's cache): the card loads every time
 - [ ] Undo only on the latest taken / skipped / refilled item; the confirmation names the action and the stock change
 - [ ] An action that is not possible shows a message at the bottom of the screen
 - [ ] Acting from a notification or the device page updates the card within a second or two

@@ -226,7 +226,7 @@ class MedTrackTodayCard extends HTMLElement {
 
   // --- Data ---------------------------------------------------------------------
 
-  /** Whether any MedTrack entity changed since the last call. */
+  /** Whether any MedTrack entity (or the hub's person) changed since the last call. */
   _entityChanges() {
     const hass = this._hass;
     if (hass.entities !== this._entitiesRef) {
@@ -236,6 +236,14 @@ class MedTrackTodayCard extends HTMLElement {
         .map((e) => e.entity_id);
     }
     let changed = false;
+    // The hub's person (get_day): leaving home makes "Remind at home"
+    // possible without any MedTrack entity changing. Only the state counts
+    // (not GPS attribute updates).
+    const personState = this._currentPersonState();
+    if (personState !== this._personState) {
+      this._personState = personState;
+      changed = true;
+    }
     for (const id of this._entityIds) {
       const state = hass.states[id];
       if (this._seen.get(id) !== state) {
@@ -244,6 +252,11 @@ class MedTrackTodayCard extends HTMLElement {
       }
     }
     return changed;
+  }
+
+  _currentPersonState() {
+    const person = this._day?.person;
+    return person ? this._hass.states[person]?.state : undefined;
   }
 
   async _fetch() {
@@ -260,6 +273,7 @@ class MedTrackTodayCard extends HTMLElement {
       });
       if (seq !== this._seq) return;
       this._day = result.response;
+      this._personState = this._currentPersonState(); // what this response used
       this._error = null;
     } catch (err) {
       if (seq !== this._seq) return;
@@ -614,7 +628,8 @@ class MedTrackTodayCardEditor extends HTMLElement {
   }
 }
 
-if (!customElements.get(CARD_TYPE)) {
+function defineCard() {
+  if (customElements.get(CARD_TYPE)) return;
   customElements.define(CARD_TYPE, MedTrackTodayCard);
   customElements.define(`${CARD_TYPE}-editor`, MedTrackTodayCardEditor);
   window.customCards = window.customCards || [];
@@ -627,3 +642,15 @@ if (!customElements.get(CARD_TYPE)) {
   });
   console.info(`%c MEDTRACK-TODAY-CARD %c ${VERSION} `, "background:#1F5FD1;color:#fff", "");
 }
+
+// While it starts, the frontend replaces window.customElements with its own
+// registry (a polyfill for scoped element registries). An element defined
+// before that swap is unknown to dashboards ("Custom element doesn't
+// exist"); that happens when this file comes from the browser cache and runs
+// before the frontend. So define the card only once the frontend has
+// registered its own <home-assistant> element (or after 15 s as a fallback).
+const FRONTEND_WAIT_UNTIL = Date.now() + 15000;
+(function defineWhenFrontendReady() {
+  if (customElements.get("home-assistant") || Date.now() > FRONTEND_WAIT_UNTIL) defineCard();
+  else setTimeout(defineWhenFrontendReady, 50);
+})();

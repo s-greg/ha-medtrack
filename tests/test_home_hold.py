@@ -219,6 +219,25 @@ async def test_second_tap_is_ignored(
     assert reminders(notify_calls) == []
 
 
+async def test_snooze_does_not_cut_the_hold_short(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory, notify_calls: Calls
+) -> None:
+    """A stale Snooze tap is ignored and the Snooze button explains why; the
+    dose keeps waiting until home with no snooze used."""
+    entry, _, dose_id = await _start(hass, freezer)
+    await _hold(hass, freezer, notify_calls, dose_id)
+    records = len(history(entry))
+    await tap(hass, f"MEDTRACK_SNOOZE_{dose_id}", dose_id)
+    with pytest.raises(ServiceValidationError, match="already waiting until you"):
+        await press(hass, "button.metformin_snooze")
+    status = hass.states.get("sensor.metformin_status")
+    assert status.attributes["until"] == "home"
+    assert status.attributes["snoozes_used"] == 0
+    assert len(history(entry)) == records
+    await move_to(hass, freezer, local(2026, 11, 5, 9, 0))
+    assert reminders(notify_calls) == []
+
+
 async def test_taken_elsewhere_cancels_the_hold(
     hass: HomeAssistant, freezer: FrozenDateTimeFactory, notify_calls: Calls
 ) -> None:
@@ -465,6 +484,8 @@ async def test_card_offers_the_button_while_away(
     assert not await can_wait()
     _set_person(hass, "unknown")
     assert not await can_wait()
+    # The card watches this person to show the button when they leave.
+    assert (await medtrack(hass, "get_day"))["person"] == PERSON
 
 
 async def test_remind_at_home_action_holds_the_dose(

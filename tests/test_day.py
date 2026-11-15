@@ -63,6 +63,7 @@ async def test_day_before_first_dose(
     assert day["now"] == "2026-11-05T06:30:00+01:00"
     # The early-take window of the 08:00 dose opens at 07:00.
     assert day["refresh_at"] == "2026-11-05T07:00:00+01:00"
+    assert day["person"] is None
     assert (day["taken"], day["total"]) == (0, 2)
     assert day["snooze_length"] == 15
     assert day["refills"] == []

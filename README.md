@@ -205,10 +205,11 @@ together with the integration. The Companion App loads the new version on its
 own, because every version has its own address.
 
 > [!NOTE]
-> A dashboard opened while Home Assistant is still starting can show
-> "Custom element doesn't exist: medtrack-today-card". Reload the page once
-> Home Assistant has finished starting (on iPhone: pull down on the
-> dashboard).
+> Before v1.2.0 the card could show "Custom element doesn't exist:
+> medtrack-today-card" now and then, mostly in the Companion App; v1.2.0
+> fixes that. A dashboard opened while Home Assistant is still starting can
+> still show it: reload the page once Home Assistant has finished starting
+> (on iPhone: pull down on the dashboard).
 
 ## Actions
 

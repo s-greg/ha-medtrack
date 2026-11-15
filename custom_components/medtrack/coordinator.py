@@ -1020,7 +1020,9 @@ class MedTrackManager:
                 med, dose, now, source=source, user_id=user_id
             )
 
-        if verb != ActionVerb.SNOOZE or not dose.is_active:
+        # A dose waiting until the person is home is not snoozed (a stale
+        # Snooze on another phone or a watch must not cut the wait short).
+        if verb != ActionVerb.SNOOZE or not dose.is_active or dose.is_held:
             return False
         if dose.snoozes_used >= self.settings.max_snoozes:
             _LOGGER.info("No snoozes left for dose %s", dose.dose_id)
@@ -1154,6 +1156,8 @@ class MedTrackManager:
         dose = self.find_dose(subentry_id, early=False)
         if dose is None:
             raise self._nothing_to_do("nothing_to_snooze", subentry_id)
+        if dose.is_held:
+            raise self._nothing_to_do("already_waiting_for_home", subentry_id)
         if dose.snoozes_used >= self.settings.max_snoozes:
             raise self._nothing_to_do("no_snoozes_left", subentry_id)
         return await self.async_handle_action(
@@ -1725,6 +1729,9 @@ class MedTrackManager:
             "date": start.astimezone(self.tz).date().isoformat(),
             "now": _local_iso(now),
             "refresh_at": _local_iso(min(t for t in refresh if t > now)),
+            # The card also refetches when this person's state changes
+            # ("Remind at home" appears when they leave).
+            "person": self.settings.person if self._can_hold() else None,
             "taken": sum(
                 1 for d in doses if d["state"] in TAKEN_STATES and not d["earlier_day"]
             ),
